@@ -21,17 +21,17 @@ This section covers downloading the Proxmox VE ISO and creating a bootable USB d
 
 <div style="margin-left: 2em">
 <img src="img/proxmox-downloads-page.png" alt="Proxmox VE downloads page" width="800">
-</div>
 
 *Figure 1. Proxmox VE downloads page. This testbed was validated with version 9.1-1. Use the latest available version unless exact reproducibility is required.*
+</div>
 
 4. Wait for the download to complete — confirm the `.iso` file exists in your local storage before proceeding
 
 <div style="margin-left: 2em">
 <img src="img/proxmox-ve-iso-file.png" alt="Proxmox VE ISO file in local storage" width="600">
-</div>
 
 *Figure 2. Proxmox VE ISO file saved to local storage.*
+</div>
 
 ---
 
@@ -44,15 +44,15 @@ Rufus is a free utility for creating bootable USB drives from ISO files. It is u
 
 <div style="margin-left: 2em">
 <img src="img/rufus-download-page.png" alt="Rufus download page" width="800">
-</div>
 
 *Figure 3. Rufus download page. Download the portable version.*
+</div>
 
 <div style="margin-left: 2em">
 <img src="img/rufus-executable.png" alt="Rufus executable downloaded" width="600">
-</div>
 
 *Figure 4. Rufus 4.11 portable executable downloaded — no installation required.*
+</div>
 
 ---
 
@@ -64,17 +64,17 @@ Rufus is a free utility for creating bootable USB drives from ISO files. It is u
 
 <div style="margin-left: 2em">
 <img src="img/rufus-initial.png" alt="Rufus initial state" width="420">
-</div>
 
 *Figure 5. Rufus open with USB drive detected. Verify the correct device is shown before proceeding.*
+</div>
 
 4. Under **Boot selection** click **SELECT** — browse to the Proxmox VE ISO downloaded in Step 1 and select it
 
 <div style="margin-left: 2em">
 <img src="img/rufus-iso-selected.png" alt="Rufus with Proxmox VE ISO selected" width="800">
-</div>
 
 *Figure 6. Proxmox VE ISO selected as boot source.*
+</div>
 
 5. When the **ISOHybrid image detected** dialog appears, select **Write in ISO Image mode** — click **OK**
 
@@ -82,9 +82,9 @@ Rufus is a free utility for creating bootable USB drives from ISO files. It is u
 
 <div style="margin-left: 2em">
 <img src="img/rufus-isohybrid.png" alt="ISOHybrid image detected dialog" width="400">
-</div>
 
 *Figure 7. ISOHybrid image detected dialog. Select Write in ISO Image mode and click OK.*
+</div>
 
 6. Rufus automatically adjusts the formatting options after confirming ISO Image mode. Verify the final configuration matches the following before proceeding
 
@@ -100,9 +100,9 @@ Rufus is a free utility for creating bootable USB drives from ISO files. It is u
 
 <div style="margin-left: 2em">
 <img src="img/rufus-config.png" alt="Rufus final configuration" width="420">
-</div>
 
 *Figure 8. Rufus final configuration with Proxmox VE ISO loaded and ready to start.*
+</div>
 
 7. Click **START**
 8. Confirm the warning that all data on the USB drive will be erased — click **OK**
@@ -110,9 +110,9 @@ Rufus is a free utility for creating bootable USB drives from ISO files. It is u
 
 <div style="margin-left: 2em">
 <img src="img/rufus-done.png" alt="Rufus completed" width="420">
-</div>
 
 *Figure 9. Rufus showing 100% completion. The timestamp confirms total write time — in this testbed the process took approximately 44 minutes. Click CLOSE — do not click START again as it will restart the process.*
+</div>
 
 > **Important:** Click **CLOSE** when done — do not click START again.
 
