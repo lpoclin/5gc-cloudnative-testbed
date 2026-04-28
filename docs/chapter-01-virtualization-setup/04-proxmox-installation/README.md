@@ -38,7 +38,7 @@ After pressing F10 in the previous section the workstation restarts. Wait for th
 
 2. The installer will load and validate system components — wait for the graphical interface to appear
 
-> **Note:** If the graphical installer freezes during loading, this is typically caused by GPU driver compatibility. See [TROUBLESHOOTING.md — Graphical installer freeze](../../../../TROUBLESHOOTING.md) for the nomodeset fix.
+> **Note:** If the graphical installer freezes during loading, this is typically caused by GPU driver compatibility. See [TROUBLESHOOTING.md — Graphical installer freeze](https://github.com/lpoclin/5gc-cloudnative-testbed/blob/main/TROUBLESHOOTING.md) for the nomodeset fix.
 
 ---
 
