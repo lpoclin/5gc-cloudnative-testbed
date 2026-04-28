@@ -133,6 +133,8 @@ The management network provides remote access to the Proxmox web interface. Use 
 
 The installation takes approximately 2 to 3 minutes. A progress bar shows the current status.
 
+1. Wait for the progress bar to complete
+
    <img src="img/proxmox-installing.png" alt="Proxmox VE installation progress" width="800">
    <br><sub>Figure 8. Installation in progress. Wait for the process to complete without interruption.</sub>
    <br><br>
@@ -157,7 +159,9 @@ The installation takes approximately 2 to 3 minutes. A progress bar shows the cu
 
 From the management endpoint open a browser and navigate to the Proxmox web interface URL shown on the console. Confirm the login page loads — login and post-installation configuration are covered in the next section.
 
-`https://192.168.18.200:8006`
+1. Open a browser and navigate to `https://192.168.18.200:8006`
+2. Accept the self-signed certificate warning
+3. Confirm the login page loads
 
    <img src="img/proxmox-web-login.png" alt="Proxmox VE web interface login page" width="800">
    <br><sub>Figure 10. Proxmox VE web interface login page accessible from the management endpoint. Installation is complete.</sub>
