@@ -83,6 +83,8 @@ systemctl disable --now pve-ha-lrm pve-ha-crm 2>/dev/null || true
 systemctl disable --now corosync 2>/dev/null || true
 ```
 
+4. Confirm the script completes successfully — each step outputs its result
+
    <img src="img/proxmox-script-steps-1-7.png" alt="Post-install script steps 1 to 7 running in Proxmox shell" width="800">
    <br><sub>Figure 3. Proxmox shell showing steps 1 to 7 of the baseline script executed successfully.</sub>
    <br><br>
@@ -124,6 +126,9 @@ sed -i \
   "$WEB_JS"
 reboot
 ```
+
+1. Paste the command into the Shell and press **Enter**
+2. The server will reboot automatically
 
    <img src="img/proxmox-popup-fix.png" alt="No subscription popup removal command in shell" width="800">
    <br><sub>Figure 5. Popup removal command executed in the Proxmox shell. A backup of the original file is created automatically before modification.</sub>
