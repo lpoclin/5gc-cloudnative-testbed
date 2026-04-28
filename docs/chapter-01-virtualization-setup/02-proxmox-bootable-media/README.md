@@ -40,7 +40,7 @@ Rufus is a free utility for creating bootable USB drives from ISO files. It is u
 
    <img src="img/rufus-download-page.png" alt="Rufus download page" width="800">
    <br><sub>Figure 3. Rufus download page. Download the portable version.</sub>
-   <br><br>
+   <br><br><br>
 
    <img src="img/rufus-executable.png" alt="Rufus executable downloaded" width="600">
    <br><sub>Figure 4. Rufus 4.11 portable executable downloaded — no installation required.</sub>
