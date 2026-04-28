@@ -15,11 +15,11 @@ This section covers the complete Proxmox VE installation process from USB boot t
 
 ## Step 1 — Boot from USB
 
-After saving BIOS settings in the previous section the workstation restarts automatically. If the USB drive was not inserted in time before the restart, the BIOS screen will appear again — in that case insert the USB drive and restart manually or exit BIOS to trigger the boot sequence.
+After pressing F10 in the previous section the workstation restarts. Wait for the restart to complete — the BIOS screen will appear again. At this point insert the Proxmox VE bootable USB drive into the workstation and exit BIOS to trigger the boot sequence.
 
-1. Insert the Proxmox VE bootable USB drive into the workstation
-2. Power on the workstation — or restart from BIOS if it appeared again
-3. Press **F8** immediately after powering on to open the boot device selection menu
+1. Insert the Proxmox VE bootable USB drive while the BIOS screen is showing
+2. Exit BIOS — the workstation will restart automatically
+3. Press **F8** immediately during the restart to open the boot device selection menu
 
    > **Note:** On ASUS boards the boot device menu key is **F8**. On other manufacturers it may be **F11**, **F12**, or **ESC**. Refer to your motherboard manual if F8 does not open the boot menu.
 
