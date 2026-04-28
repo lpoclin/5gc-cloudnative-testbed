@@ -84,8 +84,10 @@ Both CSM and Secure Boot are configured from the same Boot menu screen. Disablin
 
 - \[1\] ASUS, "Pro WS TRX50-SAGE WIFI User Manual," ASUS Support.
       https://www.asus.com/supportonly/pro%20ws%20trx50-sage%20wifi/helpdesk_manual/ [Accessed: April 2026]
-- \[2\] AMD, "AMD-V Virtualization Technology," AMD Developer Resources.
-      https://developer.amd.com/resources/epyc-resources/epyc-specifications/ [Accessed: April 2026]
+- \[2\] ASUS, "How to enable or disable AMD Virtualization (AMD-V) technology," ASUS Support FAQ.
+      https://www.asus.com/support/faq/1043992/ [Accessed: April 2026]
+- \[3\] Proxmox Server Solutions, "Proxmox VE System Requirements," Proxmox Documentation.
+      https://pve.proxmox.com/wiki/System_Requirements [Accessed: April 2026]
 
 ---
 
