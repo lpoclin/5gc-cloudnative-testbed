@@ -32,8 +32,9 @@ The following table describes the exact hardware configuration on which this tes
 | Switch          | 8-port, 1 GbE              | TP-Link TL-SG2008P           |
 | Cabling         | UTP Cat6                   | —                            |
 
-![Internal components of the bare-metal workstation](img/workstation-internal.jpg)
-*Figure 1. Internal view of the AMD Threadripper 9960X workstation showing CPU cooler, DDR5 RAM modules, and dual NVMe storage devices.*
+<img src="img/workstation-internal.jpg" alt="Internal components of the bare-metal workstation" width="800">
+<br><sub>Figure 1. Internal view of the AMD Threadripper 9960X workstation.</sub>
+<br><br>
 
 ---
 
