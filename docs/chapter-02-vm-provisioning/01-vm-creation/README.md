@@ -151,7 +151,6 @@ Each VM is created with the same procedure. The table below defines the resource
 ## Step 10 — Repeat for Remaining VMs
 
 Repeat Steps 1 through 9 for each remaining VM using the values from the node plan table. After completing all four VMs the Proxmox dashboard should show VMs 201 through 204 in stopped state.
-
 <img src="img/proxmox-vms-created.png" alt="Proxmox dashboard showing all four VMs created" width="800">
 <br><sub>Figure 10. All four VMs created and listed in stopped state.</sub>
 <br><br>
