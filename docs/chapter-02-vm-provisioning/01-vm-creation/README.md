@@ -37,7 +37,7 @@ Each VM is created with the same procedure. The table below defines the resource
 
 1. Set **VM ID** and **Name** according to the table above
 
-   <img src="img/proxmox-vm-general.png" alt="Proxmox VM creation General tab" width="800">
+   <img src="img/proxmox-vm-general.png" alt="Proxmox VM creation General tab" width="560">
    <br><sub>Figure 2. General tab. Set VM ID and Name matching the node plan. Example shown for VM 201 k8s-master.</sub>
    <br><br>
 
@@ -52,7 +52,7 @@ Each VM is created with the same procedure. The table below defines the resource
 3. Set **ISO image** to `ubuntu-26.04-live-server-amd64.iso`
 4. Set **Guest OS** to `Linux`, version `6.x - 2.6 Kernel`
 
-   <img src="img/proxmox-vm-os.png" alt="Proxmox VM creation OS tab" width="800">
+   <img src="img/proxmox-vm-os.png" alt="Proxmox VM creation OS tab" width="560">
    <br><sub>Figure 3. OS tab. Select the Ubuntu 26.04 ISO from local storage.</sub>
    <br><br>
 
@@ -67,7 +67,7 @@ Each VM is created with the same procedure. The table below defines the resource
 3. Set **EFI Storage** to `vmstore`
 4. Check **QEMU Guest Agent**
 
-   <img src="img/proxmox-vm-system.png" alt="Proxmox VM creation System tab" width="800">
+   <img src="img/proxmox-vm-system.png" alt="Proxmox VM creation System tab" width="560">
    <br><sub>Figure 4. System tab. q35 machine with UEFI, EFI disk on vmstore, and QEMU Guest Agent enabled.</sub>
    <br><br>
 
@@ -81,7 +81,7 @@ Each VM is created with the same procedure. The table below defines the resource
 2. Set **Disk size** according to the table for the current VM
 3. Check **Discard**
 
-   <img src="img/proxmox-vm-disks.png" alt="Proxmox VM creation Disks tab" width="800">
+   <img src="img/proxmox-vm-disks.png" alt="Proxmox VM creation Disks tab" width="560">
    <br><sub>Figure 5. Disks tab. Storage vmstore, size from node plan, Discard enabled.</sub>
    <br><br>
 
@@ -99,7 +99,7 @@ Each VM is created with the same procedure. The table below defines the resource
 2. Set **Cores** according to the table for the current VM — total cores = 1 socket × N cores
 3. Set **Type** to `host`
 
-   <img src="img/proxmox-vm-cpu.png" alt="Proxmox VM creation CPU tab" width="800">
+   <img src="img/proxmox-vm-cpu.png" alt="Proxmox VM creation CPU tab" width="560">
    <br><sub>Figure 6. CPU tab. Type host exposes the full physical CPU feature set to the VM.</sub>
    <br><br>
 
@@ -116,7 +116,7 @@ Each VM is created with the same procedure. The table below defines the resource
 1. Set **Memory** according to the table for the current VM
 2. Under **Advanced** uncheck **Ballooning Device**
 
-   <img src="img/proxmox-vm-memory.png" alt="Proxmox VM creation Memory tab" width="800">
+   <img src="img/proxmox-vm-memory.png" alt="Proxmox VM creation Memory tab" width="560">
    <br><sub>Figure 7. Memory tab. Ballooning disabled for fixed and predictable memory allocation.</sub>
    <br><br>
 
@@ -128,7 +128,7 @@ Each VM is created with the same procedure. The table below defines the resource
 
 1. Confirm **Bridge** is set to `vmbr0`
 
-   <img src="img/proxmox-vm-network.png" alt="Proxmox VM creation Network tab" width="800">
+   <img src="img/proxmox-vm-network.png" alt="Proxmox VM creation Network tab" width="560">
    <br><sub>Figure 8. Network tab. vmbr0 bridge with VirtIO model.</sub>
    <br><br>
 
@@ -142,7 +142,7 @@ Each VM is created with the same procedure. The table below defines the resource
 2. Uncheck **Start after created**
 3. Click **Finish**
 
-   <img src="img/proxmox-vm-confirm.png" alt="Proxmox VM creation confirmation summary" width="800">
+   <img src="img/proxmox-vm-confirm.png" alt="Proxmox VM creation confirmation summary" width="560">
    <br><sub>Figure 9. Confirmation summary. Verify all parameters before clicking Finish.</sub>
    <br><br>
 
@@ -152,7 +152,7 @@ Each VM is created with the same procedure. The table below defines the resource
 
 Repeat Steps 1 through 9 for each remaining VM using the values from the node plan table. After completing all four VMs the Proxmox dashboard should show VMs 201 through 204 in stopped state.
 
-<img src="img/proxmox-vms-created.png" alt="Proxmox dashboard showing all four VMs created" width="800">
+<img src="img/proxmox-vms-created.png" alt="Proxmox dashboard showing all four VMs created" width="560">
 <br><sub>Figure 10. All four VMs created and listed in stopped state. Proceed to Ubuntu installation.</sub>
 <br><br>
 
