@@ -110,4 +110,4 @@ Repeat Steps 1 through 4 on each remaining VM. The disk sizes differ per node bu
 
 ✅ You are here: `chapter-02-vm-provisioning / 03-disk-expansion`
 
-⏭️ Next: [04 — Kernel Setup →](../04-kernel-setup/README.md)
+⏭️ Next: [04 — Kernel Setup →](../04-qemu-guest-agent/README.md)

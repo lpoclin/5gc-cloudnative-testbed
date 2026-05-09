@@ -270,4 +270,4 @@ Repeat Steps 1 through 15 for VMs 202, 203, and 204 using the corresponding host
 
 ✅ You are here: `chapter-02-vm-provisioning / 02-ubuntu-installation`
 
-⏭️ Next: [03 — Kernel Setup →](../03-kernel-setup/README.md)
+⏭️ Next: [03 — Kernel Setup →](../03-disk-expansion/README.md)
