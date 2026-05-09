@@ -30,7 +30,7 @@ sudo apt install -y qemu-guest-agent
 ```
 
 <img src="img/qemu-install.png" alt="QEMU Guest Agent installation output" width="800">
-<br><sub>Figure 1. QEMU Guest Agent installed successfully.</sub>
+<sub>Figure 1. QEMU Guest Agent installed successfully.</sub>
 <br><br>
 
 ---
@@ -56,7 +56,7 @@ sudo systemctl status qemu-guest-agent --no-pager
 ```
 
 <img src="img/qemu-status.png" alt="QEMU Guest Agent systemctl status showing active running" width="800">
-<br><sub>Figure 2. QEMU Guest Agent status showing active (running). The agent is communicating with the Proxmox hypervisor.</sub>
+<sub>Figure 2. QEMU Guest Agent status showing active (running). The agent is communicating with the Proxmox hypervisor.</sub>
 <br><br>
 
 ---
@@ -66,7 +66,7 @@ sudo systemctl status qemu-guest-agent --no-pager
 In the Proxmox web interface select the VM and navigate to **Summary**. The IP address and network information are now visible — confirming the agent is operational.
 
 <img src="img/proxmox-vm-summary.png" alt="Proxmox VM summary panel showing IP address reported by QEMU Guest Agent" width="800">
-<br><sub>Figure 3. Proxmox VM summary panel. The IP address is now reported by the QEMU Guest Agent.</sub>
+<sub>Figure 3. Proxmox VM summary panel. The IP address is now reported by the QEMU Guest Agent.</sub>
 <br><br>
 
 ---
