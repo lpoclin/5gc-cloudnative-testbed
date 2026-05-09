@@ -49,7 +49,7 @@ sudo lvs -o lv_name,vg_name,lv_size,lv_path
 ```
 
 <img src="img/disk-before.png" alt="Output showing root filesystem size and LVM free space before expansion" width="800">
-<br><sub>Figure 2. Current disk layout. The root filesystem uses approximately half the provisioned disk. VFree shows the unallocated space available in the volume group.</sub>
+<sub>Figure 2. Current disk layout. The root filesystem uses approximately half the provisioned disk. VFree shows the unallocated space available in the volume group.</sub>
 <br><br>
 
 ---
@@ -63,7 +63,7 @@ sudo lvextend -r -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
 ```
 
 <img src="img/disk-extend.png" alt="Output of lvextend command extending the root logical volume" width="800">
-<br><sub>Figure 3. lvextend output. The logical volume and ext4 filesystem are extended in a single operation.</sub>
+<sub>Figure 3. lvextend output. The logical volume and ext4 filesystem are extended in a single operation.</sub>
 <br><br>
 
 ---
@@ -79,7 +79,7 @@ sudo lvs -o lv_name,vg_name,lv_size,lv_path
 ```
 
 <img src="img/disk-after.png" alt="Output showing expanded root filesystem and zero VFree in volume group" width="800">
-<br><sub>Figure 4. Expanded disk layout. The root filesystem now reflects the full provisioned size. VFree shows 0, confirming all space is allocated to the logical volume.</sub>
+<sub>Figure 4. Expanded disk layout. The root filesystem now reflects the full provisioned size. VFree shows 0, confirming all space is allocated to the logical volume.</sub>
 <br><br>
 
 ---
@@ -110,4 +110,4 @@ Repeat Steps 1 through 4 on each remaining VM. The disk sizes differ per node bu
 
 ✅ You are here: `chapter-02-vm-provisioning / 03-disk-expansion`
 
-⏭️ Next: [04 — Kernel Setup →](../04-qemu-guest-agent/README.md)
+⏭️ Next: [04 — QEMU Guest Agent →](../04-qemu-guest-agent/README.md)
