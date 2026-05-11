@@ -16,7 +16,7 @@ The agent channel was enabled at the hypervisor level during VM creation in [Cha
 ## Step 1 — Connect to the VM via SSH
 
 ```bash
-ssh operator1@192.168.18.210
+ssh unmsm@192.168.18.210
 ```
 
 Adjust the IP address for each node.

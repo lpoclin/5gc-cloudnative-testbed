@@ -4,10 +4,10 @@ This section installs Ubuntu Server 26.04 LTS on each of the four virtual machin
 
 | VM ID | Hostname | IP | Username |
 |---|---|---|---|
-| 201 | k8s-master | 192.168.18.210 | operator1 |
-| 202 | k8s-worker-1 | 192.168.18.211 | operator1 |
-| 203 | k8s-worker-2 | 192.168.18.212 | operator1 |
-| 204 | k8s-worker-3 | 192.168.18.213 | operator1 |
+| 201 | k8s-master | 192.168.18.210 | unmsm |
+| 202 | k8s-worker-1 | 192.168.18.211 | unmsm |
+| 203 | k8s-worker-2 | 192.168.18.212 | unmsm |
+| 204 | k8s-worker-3 | 192.168.18.213 | unmsm |
 
 ---
 
