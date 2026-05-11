@@ -89,7 +89,7 @@ In the Proxmox web interface select the VM and navigate to **Hardware**. Confirm
 Start the VM from Proxmox. The first boot will fail with a shim signature error — this is expected.
 
 <img src="img/boot-shim-error.png" alt="Secure Boot shim signature error on first boot" width="500">
-<br><sub>Figure 4. Shim signature error on first boot. Press any key to continue.</sub>
+<sub>Figure 4. Shim signature error on first boot. Press any key to continue.</sub>
 <br><br>
 
 Press any key when prompted. The GRUB boot menu will appear — select **UEFI Firmware Settings** and press **Enter**.
