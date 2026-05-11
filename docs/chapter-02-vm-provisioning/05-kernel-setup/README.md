@@ -89,7 +89,7 @@ In the Proxmox web interface select the VM and navigate to **Hardware**. Confirm
 Start the VM from Proxmox. The first boot will fail with a shim signature error — this is expected.
 
 <img src="img/boot-shim-error.png" alt="Secure Boot shim signature error on first boot" width="500">
-<sub>Figure 4. Shim signature error on first boot. Press any key to continue.</sub>
+<br><sub>Figure 4. Shim signature error on first boot. Press any key to continue.</sub>
 <br><br>
 
 Press any key when prompted. The GRUB boot menu will appear — select **UEFI Firmware Settings** and press **Enter**.
@@ -109,19 +109,19 @@ The boot device selection screen will appear — select **EFI Firmware Setup** a
 1. Navigate to **Device Manager** and press **Enter**
 
    <img src="img/uefi-device-manager.png" alt="UEFI firmware main menu showing Device Manager" width="800">
-   <sub>Figure 7. UEFI firmware main menu. Navigate to Device Manager.</sub>
+   <br><sub>Figure 7. UEFI firmware main menu. Navigate to Device Manager.</sub>
    <br><br>
 
 2. Navigate to **Secure Boot Configuration** and press **Enter**
 
    <img src="img/uefi-secure-boot-config.png" alt="UEFI Device Manager showing Secure Boot Configuration" width="800">
-   <sub>Figure 8. Device Manager. Select Secure Boot Configuration.</sub>
+   <br><sub>Figure 8. Device Manager. Select Secure Boot Configuration.</sub>
    <br><br>
 
 3. Select **Attempt Secure Boot** and press **Enter** to uncheck it
 
    <img src="img/uefi-attempt-secure-boot-enabled.png" alt="Secure Boot Configuration with Attempt Secure Boot checked" width="800">
-   <sub>Figure 9. Attempt Secure Boot enabled by default.</sub>
+   <br><sub>Figure 9. Attempt Secure Boot enabled by default.</sub>
    <br><br>
 
    <img src="img/uefi-attempt-secure-boot-disabled.png" alt="Secure Boot Configuration with Attempt Secure Boot unchecked" width="800">
