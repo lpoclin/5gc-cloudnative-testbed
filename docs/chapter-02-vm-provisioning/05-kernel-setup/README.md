@@ -47,7 +47,7 @@ sudo ./gtp5g-kernel-setup.sh
 ```
 
 <img src="img/kernel-setup-script.png" alt="gtp5g-kernel-setup.sh execution output" width="800">
-<br><sub>Figure 1. Kernel setup script output. Kernel packages downloaded, installed, pinned, and GRUB configured.</sub>
+<sub>Figure 1. Kernel setup script output. Kernel packages downloaded, installed, pinned, and GRUB configured.</sub>
 <br><br>
 
 ---
@@ -73,7 +73,7 @@ qm set 203 --efidisk0 vmstore:vm-203-disk-0,efitype=4m,pre-enrolled-keys=0,size=
 > **Note:** Replace `203` with the VM ID of k8s-worker-2 in your deployment.
 
 <img src="img/proxmox-qm-set-efi.png" alt="Proxmox shell showing qm set command output" width="800">
-<br><sub>Figure 2. Proxmox shell. qm set updates the EFI disk configuration with pre-enrolled-keys=0.</sub>
+<sub>Figure 2. Proxmox shell. qm set updates the EFI disk configuration with pre-enrolled-keys=0.</sub>
 <br><br>
 
 **3.3 — Verify EFI disk configuration**
@@ -81,7 +81,7 @@ qm set 203 --efidisk0 vmstore:vm-203-disk-0,efitype=4m,pre-enrolled-keys=0,size=
 In the Proxmox web interface select the VM and navigate to **Hardware**. Confirm the EFI Disk entry shows `pre-enrolled-keys=0`.
 
 <img src="img/proxmox-efi-keys-zero.png" alt="Proxmox hardware tab showing EFI disk with pre-enrolled-keys=0" width="800">
-<br><sub>Figure 3. Hardware tab confirming pre-enrolled-keys=0.</sub>
+<sub>Figure 3. Hardware tab confirming pre-enrolled-keys=0.</sub>
 <br><br>
 
 **3.4 — Start the VM and enter UEFI firmware**
@@ -89,19 +89,19 @@ In the Proxmox web interface select the VM and navigate to **Hardware**. Confirm
 Start the VM from Proxmox. The first boot will fail with a shim signature error — this is expected.
 
 <img src="img/boot-shim-error.png" alt="Secure Boot shim signature error on first boot" width="500">
-<br><sub>Figure 4. Shim signature error on first boot. Press any key to continue.</sub>
+<sub>Figure 4. Shim signature error on first boot. Press any key to continue.</sub>
 <br><br>
 
 Press any key when prompted. The GRUB boot menu will appear — select **UEFI Firmware Settings** and press **Enter**.
 
 <img src="img/grub-uefi-firmware-settings.png" alt="GRUB boot menu with UEFI Firmware Settings option" width="800">
-<br><sub>Figure 5. GRUB boot menu. Select UEFI Firmware Settings and press Enter.</sub>
+<sub>Figure 5. GRUB boot menu. Select UEFI Firmware Settings and press Enter.</sub>
 <br><br>
 
 The boot device selection screen will appear — select **EFI Firmware Setup** and press **Enter**.
 
 <img src="img/boot-device-menu.png" alt="Boot device selection menu showing EFI Firmware Setup option" width="500">
-<br><sub>Figure 6. Boot device selection menu. Select EFI Firmware Setup and press Enter.</sub>
+<sub>Figure 6. Boot device selection menu. Select EFI Firmware Setup and press Enter.</sub>
 <br><br>
 
 **3.5 — Disable Secure Boot in UEFI firmware**
@@ -109,19 +109,19 @@ The boot device selection screen will appear — select **EFI Firmware Setup** a
 1. Navigate to **Device Manager** and press **Enter**
 
    <img src="img/uefi-device-manager.png" alt="UEFI firmware main menu showing Device Manager" width="800">
-   <br><sub>Figure 7. UEFI firmware main menu. Navigate to Device Manager.</sub>
+   <sub>Figure 7. UEFI firmware main menu. Navigate to Device Manager.</sub>
    <br><br>
 
 2. Navigate to **Secure Boot Configuration** and press **Enter**
 
    <img src="img/uefi-secure-boot-config.png" alt="UEFI Device Manager showing Secure Boot Configuration" width="800">
-   <br><sub>Figure 8. Device Manager. Select Secure Boot Configuration.</sub>
+   <sub>Figure 8. Device Manager. Select Secure Boot Configuration.</sub>
    <br><br>
 
 3. Select **Attempt Secure Boot** and press **Enter** to uncheck it
 
    <img src="img/uefi-attempt-secure-boot-enabled.png" alt="Secure Boot Configuration with Attempt Secure Boot checked" width="800">
-   <br><sub>Figure 9. Attempt Secure Boot enabled by default.</sub>
+   <sub>Figure 9. Attempt Secure Boot enabled by default.</sub>
    <br><br>
 
    <img src="img/uefi-attempt-secure-boot-disabled.png" alt="Secure Boot Configuration with Attempt Secure Boot unchecked" width="800">
@@ -153,8 +153,8 @@ Expected output:
 5.15.204-0515204-generic
 ```
 
-<img src="img/kernel-verify.png" alt="uname -r output showing kernel 5.15.204" width="800">
-<br><sub>Figure 12. Kernel version confirmed as 5.15.204-0515204-generic after reboot.</sub>
+<img src="img/kernel-verify.png" alt="uname -r output showing kernel 5.15.204" width="500">
+<sub>Figure 12. Kernel version confirmed as 5.15.204-0515204-generic after reboot.</sub>
 <br><br>
 
 ---
@@ -169,8 +169,8 @@ chmod +x gtp5g-vmlinux-setup.sh
 sudo ./gtp5g-vmlinux-setup.sh
 ```
 
-<img src="img/vmlinux-setup-script.png" alt="gtp5g-vmlinux-setup.sh execution output" width="800">
-<br><sub>Figure 13. vmlinux extraction output. Placed at /lib/modules/5.15.204-0515204-generic/build/vmlinux.</sub>
+<img src="img/vmlinux-setup-script.png" alt="gtp5g-vmlinux-setup.sh execution output" width="500">
+<sub>Figure 13. vmlinux extraction output. Placed at /lib/modules/5.15.204-0515204-generic/build/vmlinux.</sub>
 <br><br>
 
 ---
@@ -181,8 +181,8 @@ sudo ./gtp5g-vmlinux-setup.sh
 ls -lh /lib/modules/$(uname -r)/build/vmlinux
 ```
 
-<img src="img/vmlinux-verify.png" alt="ls output showing vmlinux file present" width="800">
-<br><sub>Figure 14. vmlinux present at the expected path. The node is ready for gtp5g module compilation in the 5G deployment chapter.</sub>
+<img src="img/vmlinux-verify.png" alt="ls output showing vmlinux file present" width="500">
+<sub>Figure 14. vmlinux present at the expected path. The node is ready for gtp5g module compilation in the 5G deployment chapter.</sub>
 <br><br>
 
 ---
