@@ -41,7 +41,7 @@ uname -r
 ```
 
 <img src="img/uname-verify.png" alt="uname -r output on each node" width="300">
-<br><sub>Figure 1. Kernel version verification on each node before proceeding.</sub>
+<sub>Figure 1. Kernel version verification on each node before proceeding.</sub>
 <br><br>
 
 ---
@@ -60,7 +60,7 @@ free -h
 ```
 
 <img src="img/swap-disabled.png" alt="free -h output showing swap disabled" width="600">
-<br><sub>Figure 2. Swap disabled. The Swap row shows 0B.</sub>
+<sub>Figure 2. Swap disabled. The Swap row shows 0B.</sub>
 <br><br>
 
 Kubernetes requires swap to be disabled. `swapoff -a` disables it immediately. The `sed` command comments out the swap entry in `/etc/fstab` to prevent it from being re-enabled on reboot.
@@ -80,7 +80,7 @@ sudo modprobe br_netfilter
 ```
 
 <img src="img/modules-load.png" alt="modules-load.d file created and modprobe output" width="500">
-<br><sub>Figure 3. Kernel modules configured and loaded. No output from modprobe indicates success.</sub>
+<sub>Figure 3. Kernel modules configured and loaded. No output from modprobe indicates success.</sub>
 <br><br>
 
 The `modules-load.d` file ensures both modules are loaded automatically on every boot. `modprobe` loads them immediately without requiring a reboot.
@@ -105,7 +105,7 @@ sudo sysctl --system
 ```
 
 <img src="img/sysctl-system.png" alt="sysctl --system output showing parameters applied" width="600">
-<br><sub>Figure 4. sysctl --system output. Confirm the k8s.conf parameters appear in the output.</sub>
+<sub>Figure 4. sysctl --system output. Confirm the k8s.conf parameters appear in the output.</sub>
 <br><br>
 
 The `sysctl.d` file persists the parameters across reboots. `sysctl --system` applies all files in `/etc/sysctl.d/` immediately.
@@ -126,7 +126,7 @@ sudo apt-get install -y conntrack socat
 ```
 
 <img src="img/apt-install-tools.png" alt="apt install conntrack socat output" width="800">
-<br><sub>Figure 5. conntrack and socat installed successfully.</sub>
+<sub>Figure 5. conntrack and socat installed successfully.</sub>
 <br><br>
 
 | Package | Used by | Purpose |
@@ -144,7 +144,7 @@ sysctl net.bridge.bridge-nf-call-iptables net.ipv4.ip_forward
 ```
 
 <img src="img/baseline-verify.png" alt="lsmod and sysctl verification output" width="600">
-<br><sub>Figure 6. Verification output. Both modules are loaded and networking parameters are active.</sub>
+<sub>Figure 6. Verification output. Both modules are loaded and networking parameters are active.</sub>
 <br><br>
 
 Expected output:
