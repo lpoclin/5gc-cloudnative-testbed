@@ -89,4 +89,4 @@ This section covers downloading the Ubuntu Server 26.04 LTS ISO and uploading it
 
 ✅ You are here: `chapter-01-virtualization-setup / 07-iso-upload`
 
-⏭️ Next: [Chapter 2 — VM Provisioning →](../../chapter-02-vm-provisioning/README.md)
+⏭️ Next Chapter: [Chapter 2 — VM Provisioning → 01 VM Creation](../../chapter-02-vm-provisioning/01-vm-creation/README.md)

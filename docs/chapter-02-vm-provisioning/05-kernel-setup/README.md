@@ -198,4 +198,4 @@ ls -lh /lib/modules/$(uname -r)/build/vmlinux
 
 ✅ You are here: `chapter-02-vm-provisioning / 05-kernel-setup`
 
-⏭️ Next: [06 — Network Configuration →](../06-network-configuration/README.md)
+⏭️ Next Chapter: [Chapter 3 — Kubernetes Setup → 01 Node Baseline](../../chapter-03-kubernetes-setup/01-node-baseline/README.md)
