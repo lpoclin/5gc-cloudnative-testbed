@@ -53,19 +53,17 @@ sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 ```
 
-Kubernetes requires swap to be disabled. `swapoff -a` disables it immediately. The `sed` command comments out the swap entry in `/etc/fstab` to prevent it from being re-enabled on reboot.
-
 Verify:
 
 ```bash
 free -h
 ```
 
-The `Swap` row must show `0B` in all columns.
-
 <img src="img/swap-disabled.png" alt="free -h output showing swap disabled" width="600">
 <br><sub>Figure 2. Swap disabled. The Swap row shows 0B.</sub>
 <br><br>
+
+Kubernetes requires swap to be disabled. `swapoff -a` disables it immediately. The `sed` command comments out the swap entry in `/etc/fstab` to prevent it from being re-enabled on reboot.
 
 ---
 
@@ -81,16 +79,16 @@ sudo modprobe overlay
 sudo modprobe br_netfilter
 ```
 
+<img src="img/modules-load.png" alt="modules-load.d file created and modprobe output" width="500">
+<br><sub>Figure 3. Kernel modules configured and loaded. No output from modprobe indicates success.</sub>
+<br><br>
+
 The `modules-load.d` file ensures both modules are loaded automatically on every boot. `modprobe` loads them immediately without requiring a reboot.
 
 | Module | Purpose |
 |---|---|
 | overlay | Overlay filesystem driver used by containerd to layer container images |
 | br_netfilter | Enables iptables and eBPF rules to inspect bridged traffic — required by Kubernetes networking and Cilium |
-
-<img src="img/modules-load.png" alt="modules-load.d file created and modprobe output" width="500">
-<br><sub>Figure 3. Kernel modules configured and loaded. No output from modprobe indicates success.</sub>
-<br><br>
 
 ---
 
@@ -106,6 +104,10 @@ EOF
 sudo sysctl --system
 ```
 
+<img src="img/sysctl-system.png" alt="sysctl --system output showing parameters applied" width="600">
+<br><sub>Figure 4. sysctl --system output. Confirm the k8s.conf parameters appear in the output.</sub>
+<br><br>
+
 The `sysctl.d` file persists the parameters across reboots. `sysctl --system` applies all files in `/etc/sysctl.d/` immediately.
 
 | Parameter | Value | Purpose |
@@ -113,10 +115,6 @@ The `sysctl.d` file persists the parameters across reboots. `sysctl --system` ap
 | net.bridge.bridge-nf-call-iptables | 1 | Allows iptables rules to process bridged IPv4 traffic between pods |
 | net.bridge.bridge-nf-call-ip6tables | 1 | Same as above for IPv6 |
 | net.ipv4.ip_forward | 1 | Allows the kernel to forward packets between interfaces — required for pod-to-pod and pod-to-external traffic |
-
-<img src="img/sysctl-system.png" alt="sysctl --system output showing parameters applied" width="600">
-<br><sub>Figure 4. sysctl --system output. Confirm the k8s.conf parameters appear in the output.</sub>
-<br><br>
 
 ---
 
@@ -127,14 +125,14 @@ sudo apt-get update
 sudo apt-get install -y conntrack socat
 ```
 
+<img src="img/apt-install-tools.png" alt="apt install conntrack socat output" width="800">
+<br><sub>Figure 5. conntrack and socat installed successfully.</sub>
+<br><br>
+
 | Package | Used by | Purpose |
 |---|---|---|
 | conntrack | kube-proxy, Cilium | Userspace tool for inspecting and managing kernel connection tracking tables |
 | socat | kubectl | Required by `kubectl port-forward` for TCP stream forwarding |
-
-<img src="img/apt-install-tools.png" alt="apt install conntrack socat output" width="800">
-<br><sub>Figure 5. conntrack and socat installed successfully.</sub>
-<br><br>
 
 ---
 
@@ -145,6 +143,10 @@ lsmod | grep -E 'overlay|br_netfilter'
 sysctl net.bridge.bridge-nf-call-iptables net.ipv4.ip_forward
 ```
 
+<img src="img/baseline-verify.png" alt="lsmod and sysctl verification output" width="600">
+<br><sub>Figure 6. Verification output. Both modules are loaded and networking parameters are active.</sub>
+<br><br>
+
 Expected output:
 
 ```
@@ -154,15 +156,11 @@ net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
 ```
 
-<img src="img/baseline-verify.png" alt="lsmod and sysctl verification output" width="600">
-<br><sub>Figure 6. Verification output. Both modules are loaded and networking parameters are active.</sub>
-<br><br>
-
 ---
 
 ## Step 8 — Repeat for Remaining Nodes
 
-Repeat Steps 1 through 8 on k8s-worker-1 (192.168.18.211), k8s-worker-2 (192.168.18.212), and k8s-worker-3 (192.168.18.213).
+Repeat Steps 1 through 7 on k8s-worker-1 (192.168.18.211), k8s-worker-2 (192.168.18.212), and k8s-worker-3 (192.168.18.213).
 
 ---
 
