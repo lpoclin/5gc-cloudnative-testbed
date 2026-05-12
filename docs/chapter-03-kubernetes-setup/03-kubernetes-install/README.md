@@ -122,8 +122,8 @@ Pinning prevents `apt upgrade` from automatically updating the Kubernetes compon
 sudo systemctl enable kubelet
 ```
 
-<img src="img/kubelet-enable.png" alt="systemctl enable kubelet output" width="800">
-<sub>Figure 6. kubelet enabled. It will start automatically after kubeadm init or kubeadm join.</sub>
+<img src="img/kubelet-enable.png" alt="systemctl enable kubelet output" width="600">
+<BR><sub>Figure 6. kubelet enabled. It will start automatically after kubeadm init or kubeadm join.</sub>
 <br><br>
 
 > **Note:** kubelet will not start successfully at this point — it requires cluster configuration from `kubeadm init` or `kubeadm join` to run. Enabling it here ensures it starts automatically after those steps.
