@@ -43,7 +43,7 @@ dpkg -l ca-certificates curl gpg 2>/dev/null | grep -E '^ii'
 ```
 
 <img src="img/dpkg-verify.png" alt="dpkg output showing ca-certificates curl and gpg installed" width="800">
-<br><sub>Figure 1. ca-certificates, curl, and gpg confirmed present on Ubuntu 26.04.</sub>
+<sub>Figure 1. ca-certificates, curl, and gpg confirmed present on Ubuntu 26.04.</sub>
 <br><br>
 
 ---
@@ -65,7 +65,7 @@ echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.
 ```
 
 <img src="img/k8s-repo-add.png" alt="Kubernetes APT repository added output" width="800">
-<br><sub>Figure 2. Kubernetes 1.35 APT repository and signing key configured.</sub>
+<sub>Figure 2. Kubernetes 1.35 APT repository and signing key configured.</sub>
 <br><br>
 
 | Step | Purpose |
@@ -83,7 +83,7 @@ sudo apt-get update
 ```
 
 <img src="img/apt-update.png" alt="apt-get update output" width="800">
-<br><sub>Figure 3. apt-get update fetching package lists including the Kubernetes 1.35 repository.</sub>
+<sub>Figure 3. apt-get update fetching package lists including the Kubernetes 1.35 repository.</sub>
 <br><br>
 
 ```bash
@@ -91,7 +91,7 @@ sudo apt-get install -y kubelet kubeadm kubectl
 ```
 
 <img src="img/k8s-install.png" alt="apt install kubelet kubeadm kubectl output" width="800">
-<br><sub>Figure 4. kubelet, kubeadm, and kubectl installed from the Kubernetes 1.35 repository.</sub>
+<sub>Figure 4. kubelet, kubeadm, and kubectl installed from the Kubernetes 1.35 repository.</sub>
 <br><br>
 
 | Package | Purpose |
@@ -109,7 +109,7 @@ sudo apt-mark hold kubelet kubeadm kubectl
 ```
 
 <img src="img/k8s-hold.png" alt="apt-mark hold output" width="800">
-<br><sub>Figure 5. kubelet, kubeadm, and kubectl pinned to version 1.35.4 to prevent unintended upgrades.</sub>
+<sub>Figure 5. kubelet, kubeadm, and kubectl pinned to version 1.35.4 to prevent unintended upgrades.</sub>
 <br><br>
 
 Pinning prevents `apt upgrade` from automatically updating the Kubernetes components, which could cause version skew between nodes and break the cluster.
@@ -123,7 +123,7 @@ sudo systemctl enable kubelet
 ```
 
 <img src="img/kubelet-enable.png" alt="systemctl enable kubelet output" width="800">
-<br><sub>Figure 6. kubelet enabled. It will start automatically after kubeadm init or kubeadm join.</sub>
+<sub>Figure 6. kubelet enabled. It will start automatically after kubeadm init or kubeadm join.</sub>
 <br><br>
 
 > **Note:** kubelet will not start successfully at this point — it requires cluster configuration from `kubeadm init` or `kubeadm join` to run. Enabling it here ensures it starts automatically after those steps.
@@ -139,7 +139,7 @@ kubectl version --client
 ```
 
 <img src="img/k8s-verify.png" alt="kubelet kubeadm kubectl version output" width="800">
-<br><sub>Figure 7. kubelet, kubeadm, and kubectl v1.35.4 confirmed.</sub>
+<sub>Figure 7. kubelet, kubeadm, and kubectl v1.35.4 confirmed.</sub>
 <br><br>
 
 ---
