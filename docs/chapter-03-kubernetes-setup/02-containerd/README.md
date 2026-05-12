@@ -44,7 +44,7 @@ curl -fsSL https://github.com/containerd/containerd/releases/download/v2.3.0/con
 ```
 
 <img src="img/containerd-download.png" alt="containerd download output" width="800">
-<br><sub>Figure 1. containerd 2.3.0 downloaded to /tmp.</sub>
+<sub>Figure 1. containerd 2.3.0 downloaded to /tmp.</sub>
 <br><br>
 
 ---
@@ -56,7 +56,7 @@ sudo tar Cxzvf /usr/local /tmp/containerd-2.3.0-linux-amd64.tar.gz
 ```
 
 <img src="img/containerd-extract.png" alt="containerd binary extraction output" width="800">
-<br><sub>Figure 2. containerd binaries extracted to /usr/local/bin.</sub>
+<sub>Figure 2. containerd binaries extracted to /usr/local/bin.</sub>
 <br><br>
 
 ---
@@ -77,7 +77,7 @@ cat /tmp/containerd.service
 ```
 
 <img src="img/containerd-service-cat.png" alt="cat output of containerd.service unit file" width="800">
-<br><sub>Figure 3. containerd.service unit file content. Verify the ExecStart path is /usr/local/bin/containerd before proceeding.</sub>
+<sub>Figure 3. containerd.service unit file content. Verify the ExecStart path is /usr/local/bin/containerd before proceeding.</sub>
 <br><br>
 
 Install the unit file and confirm it is in place:
@@ -88,7 +88,7 @@ ls -la /etc/systemd/system/containerd.service
 ```
 
 <img src="img/containerd-service-installed.png" alt="ls output confirming containerd.service is installed" width="800">
-<br><sub>Figure 4. containerd.service installed at /etc/systemd/system/containerd.service.</sub>
+<sub>Figure 4. containerd.service installed at /etc/systemd/system/containerd.service.</sub>
 <br><br>
 
 ---
@@ -104,7 +104,7 @@ cat /tmp/config.toml
 ```
 
 <img src="img/containerd-config-cat.png" alt="cat output of default containerd config.toml" width="800">
-<br><sub>Figure 5. Default containerd configuration. Verify the file was generated correctly before proceeding.</sub>
+<sub>Figure 5. Default containerd configuration. Verify the file was generated correctly before proceeding.</sub>
 <br><br>
 
 Install the configuration:
@@ -114,7 +114,7 @@ sudo cp /tmp/config.toml /etc/containerd/config.toml
 ```
 
 <img src="img/containerd-config-installed.png" alt="ls output confirming config.toml installed" width="800">
-<br><sub>Figure 6. config.toml installed at /etc/containerd/config.toml.</sub>
+<sub>Figure 6. config.toml installed at /etc/containerd/config.toml.</sub>
 <br><br>
 
 ---
@@ -134,7 +134,7 @@ grep SystemdCgroup /etc/containerd/config.toml
 ```
 
 <img src="img/containerd-cgroup.png" alt="grep SystemdCgroup output showing true" width="800">
-<br><sub>Figure 7. SystemdCgroup set to true in containerd configuration.</sub>
+<sub>Figure 7. SystemdCgroup set to true in containerd configuration.</sub>
 <br><br>
 
 The systemd cgroup driver is required when running Kubernetes on systems using cgroupv2, which is the default on Ubuntu 26.04.
@@ -155,7 +155,7 @@ sudo systemctl status containerd --no-pager
 ```
 
 <img src="img/containerd-status.png" alt="systemctl status containerd showing active running" width="800">
-<br><sub>Figure 8. containerd service active and running.</sub>
+<sub>Figure 8. containerd service active and running.</sub>
 <br><br>
 
 ---
@@ -176,7 +176,7 @@ runc --version
 ```
 
 <img src="img/runc-version.png" alt="runc --version output" width="800">
-<br><sub>Figure 9. runc 1.4.2 installed successfully.</sub>
+<sub>Figure 9. runc 1.4.2 installed successfully.</sub>
 <br><br>
 
 ---
@@ -192,7 +192,7 @@ sudo tar Cxzvf /opt/cni/bin /tmp/cni-plugins-linux-amd64-v1.9.1.tgz
 ```
 
 <img src="img/cni-plugins-extract.png" alt="CNI plugins extraction output" width="800">
-<br><sub>Figure 10. CNI plugins extracted to /opt/cni/bin.</sub>
+<sub>Figure 10. CNI plugins extracted to /opt/cni/bin.</sub>
 <br><br>
 
 ---
@@ -206,7 +206,7 @@ ls /opt/cni/bin
 ```
 
 <img src="img/install-verify.png" alt="containerd runc and cni plugins verification output" width="800">
-<br><sub>Figure 11. containerd 2.3.0, runc 1.4.2, and CNI plugins installed and verified.</sub>
+<sub>Figure 11. containerd 2.3.0, runc 1.4.2, and CNI plugins installed and verified.</sub>
 <br><br>
 
 ---
