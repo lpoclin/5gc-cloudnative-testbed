@@ -46,7 +46,7 @@ sudo kubeadm init \
 ```
 
 <img src="img/kubeadm-init.png" alt="kubeadm init output" width="800">
-<sub>Figure 1. kubeadm init output. Initializes etcd, API server, scheduler, and controller manager.</sub>
+<br><sub>Figure 1. kubeadm init output. Initializes etcd, API server, scheduler, and controller manager.</sub>
 <br><br>
 
 | Flag | Purpose |
@@ -54,6 +54,8 @@ sudo kubeadm init \
 | `--pod-network-cidr` | Reserves the pod IP range in the cluster. Must not overlap with host or service networks. |
 | `--apiserver-advertise-address` | Explicitly sets the API server IP. Required on multi-NIC nodes to avoid selecting the wrong interface. |
 | `--node-name` | Sets the node name registered in the cluster. Ensures consistent naming across environments regardless of OS hostname. |
+
+> **Note:** Adding `--skip-phases=addon/kube-proxy` to the command above prevents kubeadm from installing kube-proxy. If omitted, kube-proxy must be removed manually before joining workers — see [06 — Worker Join](../06-worker-join/README.md).
 
 ---
 
@@ -93,17 +95,17 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ## Step 5 — Verify Control Plane
 
 ```bash
-kubectl get nodes -A -o wide
-kubectl get pods -A -o wide
+kubectl get nodes -o wide
+kubectl get pods -n kube-system -o wide
 ```
 
 <img src="img/kubectl-verify.png" alt="kubectl get nodes and get pods output" width="800">
-<sub>Figure 4. Control plane verification output.</sub>
+<br><sub>Figure 4. Control plane verification output.</sub>
 <br><br>
 
-- **k8s-master NotReady** — kubelet cannot configure pod networking without a CNI plugin installed.
-- **coredns Pending** — the scheduler cannot place coredns on k8s-master because the control plane NoSchedule taint is not tolerated by coredns. It will be scheduled on a worker node after kubeadm join.
-- **etcd, apiserver, scheduler, controller-manager Running** — static pods running in host network mode, no CNI required.
+- **k8s-master NotReady** — kubelet reports `NetworkReady=false` because no CNI plugin is installed. The Node Lifecycle Controller applies the `node.kubernetes.io/not-ready:NoSchedule` taint automatically in response.
+- **coredns Pending** — coredns does not tolerate `node.kubernetes.io/not-ready:NoSchedule`. The scheduler rejects it until the taint is removed. Both states resolve after Cilium installs the CNI plugin in the next section.
+- **etcd, apiserver, scheduler, controller-manager Running** — static pods managed directly by kubelet from `/etc/kubernetes/manifests/`. They use host network mode and are unaffected by CNI state.
 
 Both NotReady and Pending states will resolve after Cilium is installed and workers have joined.
 
