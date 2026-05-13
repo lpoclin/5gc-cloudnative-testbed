@@ -43,7 +43,7 @@ kubectl -n kube-system delete daemonset kube-proxy
 kubectl -n kube-system delete configmap kube-proxy
 ```
 
-<img src="img/kube-proxy-delete.png" alt="kubectl delete kube-proxy daemonset and configmap output" width="800">
+<img src="img/kube-proxy-delete.png" alt="kubectl delete kube-proxy daemonset and configmap output" width="600">
 <sub>Figure 1. kube-proxy DaemonSet and ConfigMap deleted. kube-proxy will not be deployed on any node going forward.</sub>
 <br><br>
 

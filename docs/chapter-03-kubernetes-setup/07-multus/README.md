@@ -54,7 +54,7 @@ kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-c
 ```
 
 <img src="img/multus-apply.png" alt="kubectl apply multus output" width="800">
-<br><sub>Figure 1. Multus 4.2.4 resources created — DaemonSet, ClusterRole, ClusterRoleBinding, ServiceAccount, and CRD.</sub>
+<sub>Figure 1. Multus 4.2.4 resources created — DaemonSet, ClusterRole, ClusterRoleBinding, ServiceAccount, and CRD.</sub>
 <br><br>
 
 ---
@@ -78,7 +78,7 @@ kubectl get pods -n kube-system -o wide
 kubectl get crd
 ```
 
-<img src="img/multus-crd.png" alt="kubectl get crd output showing network-attachment-definitions CRD" width="800">
+<img src="img/multus-crd.png" alt="kubectl get crd output showing network-attachment-definitions CRD" width="600">
 <br><sub>Figure 3. network-attachment-definitions.k8s.cni.cncf.io CRD registered alongside Cilium CRDs. NAD resources are created in later chapters to define the 5G network interfaces.</sub>
 <br><br>
 

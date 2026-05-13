@@ -86,8 +86,8 @@ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
 
-<img src="img/kubectl-config.png" alt="kubectl config setup output" width="800">
-<sub>Figure 3. kubectl configuration copied to $HOME/.kube/config.</sub>
+<img src="img/kubectl-config.png" alt="kubectl config setup output" width="600">
+<br><sub>Figure 3. kubectl configuration copied to $HOME/.kube/config.</sub>
 <br><br>
 
 ---
