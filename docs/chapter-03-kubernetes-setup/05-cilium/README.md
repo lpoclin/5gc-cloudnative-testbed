@@ -74,7 +74,7 @@ helm repo update
 ```
 
 <img src="img/helm-repo-add.png" alt="helm repo add and update output" width="500">
-<br><sub>Figure 2. Cilium Helm repository added and updated.</sub>
+<sub>Figure 2. Cilium Helm repository added and updated.</sub>
 <br><br>
 
 ---
@@ -94,7 +94,7 @@ helm install cilium cilium/cilium \
 ```
 
 <img src="img/cilium-install.png" alt="helm install cilium output" width="600">
-<br><sub>Figure 3. Cilium 1.19.3 installed with Hubble relay and UI enabled.</sub>
+<sub>Figure 3. Cilium 1.19.3 installed with Hubble relay and UI enabled.</sub>
 <br><br>
 
 | Flag | Purpose |
