@@ -67,7 +67,7 @@ kubectl get pods -n kube-system -o wide
 ```
 
 <img src="img/multus-verify.png" alt="kubectl get daemonset and pods output showing kube-multus-ds running on all nodes" width="800">
-<br><sub>Figure 2. kube-multus-ds DaemonSet running with one pod per node alongside Cilium DaemonSets. All four kube-multus-ds pods must show Running before proceeding.</sub>
+<sub>Figure 2. kube-multus-ds DaemonSet running with one pod per node alongside Cilium DaemonSets. All four kube-multus-ds pods must show Running before proceeding.</sub>
 <br><br>
 
 ---
@@ -79,7 +79,7 @@ kubectl get crd
 ```
 
 <img src="img/multus-crd.png" alt="kubectl get crd output showing network-attachment-definitions CRD" width="600">
-<br><sub>Figure 3. network-attachment-definitions.k8s.cni.cncf.io CRD registered alongside Cilium CRDs. NAD resources are created in later chapters to define the 5G network interfaces.</sub>
+<sub>Figure 3. network-attachment-definitions.k8s.cni.cncf.io CRD registered alongside Cilium CRDs. NAD resources are created in later chapters to define the 5G network interfaces.</sub>
 <br><br>
 
 ---
