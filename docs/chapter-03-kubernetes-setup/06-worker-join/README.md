@@ -44,7 +44,7 @@ kubectl -n kube-system delete configmap kube-proxy
 ```
 
 <img src="img/kube-proxy-delete.png" alt="kubectl delete kube-proxy daemonset and configmap output" width="800">
-<br><sub>Figure 1. kube-proxy DaemonSet and ConfigMap deleted. kube-proxy will not be deployed on any node going forward.</sub>
+<sub>Figure 1. kube-proxy DaemonSet and ConfigMap deleted. kube-proxy will not be deployed on any node going forward.</sub>
 <br><br>
 
 > **Note:** This can also be avoided at initialization time by passing `--skip-phases=addon/kube-proxy` to `kubeadm init`. Both approaches produce the same result.
@@ -68,7 +68,7 @@ sudo kubeadm join 192.168.18.210:6443 \
 ```
 
 <img src="img/worker-join.png" alt="kubeadm join output on worker node" width="800">
-<br><sub>Figure 2. kubeadm join output. The node registers with the control plane and kubelet starts.</sub>
+<sub>Figure 2. kubeadm join output. The node registers with the control plane and kubelet starts.</sub>
 <br><br>
 
 > **Note:** If the token has expired (tokens expire after 24 hours), generate a new one on k8s-master with `kubeadm token create --print-join-command`.
@@ -88,7 +88,7 @@ kubectl get pods -A -o wide
 ```
 
 <img src="img/cluster-verify.png" alt="kubectl get nodes and pods showing all nodes Ready and pods Running" width="800">
-<br><sub>Figure 3. All four nodes Ready and all pods Running after workers join.</sub>
+<sub>Figure 3. All four nodes Ready and all pods Running after workers join.</sub>
 <br><br>
 
 - **All nodes Ready** — Cilium DaemonSet deploys its agent on each worker automatically after join.

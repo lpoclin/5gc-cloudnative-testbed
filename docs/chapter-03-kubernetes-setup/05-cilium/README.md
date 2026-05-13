@@ -61,7 +61,7 @@ helm version
 ```
 
 <img src="img/helm-version.png" alt="helm version output" width="800">
-<br><sub>Figure 1. Helm 3.17.3 installed successfully.</sub>
+<sub>Figure 1. Helm 3.17.3 installed successfully.</sub>
 <br><br>
 
 ---
@@ -74,7 +74,7 @@ helm repo update
 ```
 
 <img src="img/helm-repo-add.png" alt="helm repo add and update output" width="800">
-<br><sub>Figure 2. Cilium Helm repository added and updated.</sub>
+<sub>Figure 2. Cilium Helm repository added and updated.</sub>
 <br><br>
 
 ---
@@ -94,7 +94,7 @@ helm install cilium cilium/cilium \
 ```
 
 <img src="img/cilium-install.png" alt="helm install cilium output" width="800">
-<br><sub>Figure 3. Cilium 1.19.3 installed with Hubble relay and UI enabled.</sub>
+<sub>Figure 3. Cilium 1.19.3 installed with Hubble relay and UI enabled.</sub>
 <br><br>
 
 | Flag | Purpose |
@@ -115,7 +115,7 @@ kubectl get pods -A -o wide
 ```
 
 <img src="img/cilium-verify.png" alt="kubectl get nodes and pods output after Cilium install" width="800">
-<br><sub>Figure 4. Cluster state after Cilium installation.</sub>
+<sub>Figure 4. Cluster state after Cilium installation.</sub>
 <br><br>
 
 - **k8s-master Ready** — Cilium initialized the CNI plugin. kubelet reported `NetworkReady=true` and the Node Lifecycle Controller removed the `node.kubernetes.io/not-ready:NoSchedule` taint automatically.
