@@ -46,7 +46,7 @@ sudo kubeadm init \
 ```
 
 <img src="img/kubeadm-init.png" alt="kubeadm init output" width="800">
-<br><sub>Figure 1. kubeadm init output. Initializes etcd, API server, scheduler, and controller manager.</sub>
+<sub>Figure 1. kubeadm init output. Initializes etcd, API server, scheduler, and controller manager.</sub>
 <br><br>
 
 | Flag | Purpose |
@@ -67,7 +67,7 @@ kubeadm join <control-plane-ip>:6443 --token <token> \
 ```
 
 <img src="img/kubeadm-join-command.png" alt="kubeadm join command at end of kubeadm init output" width="800">
-<br><sub>Figure 2. kubeadm join command. Copy the full command including token and hash.</sub>
+<sub>Figure 2. kubeadm join command. Copy the full command including token and hash.</sub>
 <br><br>
 
 > **Note:** The bootstrap token expires after 24 hours. If it expires before all workers join, run `kubeadm token create --print-join-command` on k8s-master to generate a new one.
@@ -85,7 +85,7 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
 
 <img src="img/kubectl-config.png" alt="kubectl config setup output" width="800">
-<br><sub>Figure 3. kubectl configuration copied to $HOME/.kube/config.</sub>
+<sub>Figure 3. kubectl configuration copied to $HOME/.kube/config.</sub>
 <br><br>
 
 ---
@@ -98,7 +98,7 @@ kubectl get pods -A -o wide
 ```
 
 <img src="img/kubectl-verify.png" alt="kubectl get nodes and get pods output" width="800">
-<br><sub>Figure 4. Control plane verification output.</sub>
+<sub>Figure 4. Control plane verification output.</sub>
 <br><br>
 
 - **k8s-master NotReady** — kubelet cannot configure pod networking without a CNI plugin installed.
