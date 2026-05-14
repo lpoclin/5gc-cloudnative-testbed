@@ -93,4 +93,4 @@ kubectl get crd
 
 ✅ You are here: `chapter-03-kubernetes-setup / 07-multus`
 
-⏭️ Next: [08 — Storage →](../08-storage/README.md)
+⏭️ Next: [08 — Cluster Storage →](../08-cluster-storage/README.md)

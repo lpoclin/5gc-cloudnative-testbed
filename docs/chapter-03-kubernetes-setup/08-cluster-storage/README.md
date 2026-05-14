@@ -136,4 +136,4 @@ kubectl get storageclass
 
 ✅ You are here: `chapter-03-kubernetes-setup / 08-cluster-storage`
 
-⏭️ Next: [09 — Ingress →](../09-ingress/README.md)
+⏭️ Next: [09 — Gateway API →](../09-gateway-api/README.md)
