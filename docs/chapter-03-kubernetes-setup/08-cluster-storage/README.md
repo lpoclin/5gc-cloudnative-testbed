@@ -53,8 +53,8 @@ lsmod | grep -E 'dm_snapshot|dm_mirror|dm_thin_pool'
 iscsiadm --version
 ```
 
-<img src="img/longhorn-prereq-check.png" alt="lsmod and iscsiadm verification output" width="800">
-<br><sub>Figure 1. Kernel modules and open-iscsi confirmed present. Repeat on all four nodes before installing Longhorn. Ubuntu 26.04 ships with all requirements by default.</sub>
+<img src="img/longhorn-prereq-check.png" alt="lsmod and iscsiadm verification output" width="600">
+<sub>Figure 1. Kernel modules and open-iscsi confirmed present. Repeat on all four nodes before installing Longhorn. Ubuntu 26.04 ships with all requirements by default.</sub>
 <br><br>
 
 ---
@@ -72,7 +72,7 @@ kubectl get nodes --show-labels
 ```
 
 <img src="img/node-labels.png" alt="kubectl get nodes showing role labels" width="800">
-<br><sub>Figure 2. Worker nodes labeled with their roles.</sub>
+<sub>Figure 2. Worker nodes labeled with their roles.</sub>
 <br><br>
 
 ---
@@ -84,7 +84,7 @@ helm repo add longhorn https://charts.longhorn.io
 helm repo update
 ```
 
-<img src="img/longhorn-repo.png" alt="helm repo add longhorn output" width="800">
+<img src="img/longhorn-repo.png" alt="helm repo add longhorn output" width="500">
 <br><sub>Figure 3. Longhorn Helm repository added and updated.</sub>
 <br><br>
 
@@ -100,7 +100,7 @@ helm install longhorn longhorn/longhorn \
 ```
 
 <img src="img/longhorn-install.png" alt="helm install longhorn output" width="800">
-<br><sub>Figure 4. Longhorn 1.11.2 installed. The warnings about unrecognized format "int64" are a known Helm 3.17 schema validation issue with the Longhorn chart and do not affect the installation.</sub>
+<sub>Figure 4. Longhorn 1.11.2 installed. The warnings about unrecognized format "int64" are a known Helm 3.17 schema validation issue with the Longhorn chart and do not affect the installation.</sub>
 <br><br>
 
 ---
@@ -112,7 +112,7 @@ kubectl get pods -n longhorn-system
 ```
 
 <img src="img/longhorn-pods.png" alt="kubectl get pods longhorn-system all running" width="800">
-<br><sub>Figure 5. All Longhorn pods Running. The CSI sidecars (csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter) deploy with 3 replicas each using leader election for high availability.</sub>
+<sub>Figure 5. All Longhorn pods Running. The CSI sidecars (csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter) deploy with 3 replicas each using leader election for high availability.</sub>
 <br><br>
 
 ```bash
@@ -120,7 +120,7 @@ kubectl get storageclass
 ```
 
 <img src="img/storageclass-default.png" alt="kubectl get storageclass showing longhorn as default" width="800">
-<br><sub>Figure 6. Longhorn StorageClass showing as default. Any PVC without an explicit storageClassName will use Longhorn automatically.</sub>
+<sub>Figure 6. Longhorn StorageClass showing as default. Any PVC without an explicit storageClassName will use Longhorn automatically.</sub>
 <br><br>
 
 ---
