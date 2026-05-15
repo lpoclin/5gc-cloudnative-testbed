@@ -70,7 +70,7 @@ helm upgrade cilium cilium/cilium \
   --set externalIPs.enabled=true
 ```
 
-<img src="img/cilium-upgrade.png" alt="helm upgrade cilium output" width="800">
+<img src="img/cilium-upgrade.png" alt="helm upgrade cilium output" width="500">
 <sub>Figure 2. Cilium upgraded with Gateway API and L2 Announcements enabled.</sub>
 <br><br>
 
@@ -184,7 +184,7 @@ spec:
 EOF
 ```
 
-<img src="img/gateway-created.png" alt="namespace and gateway created output" width="800">
+<img src="img/gateway-created.png" alt="namespace and gateway created output" width="500">
 <sub>Figure 7. monitoring namespace and observability-gateway created.</sub>
 <br><br>
 

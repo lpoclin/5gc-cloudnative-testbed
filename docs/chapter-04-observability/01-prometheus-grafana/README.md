@@ -120,7 +120,7 @@ EOF
 
 > **Note:** Replace `192.168.18.230` with the address shown in `kubectl get gateway -n monitoring` if your Gateway IP differs.
 
-<img src="img/values-created.png" alt="values-prometheus-grafana.yaml created" width="800">
+<img src="img/values-created.png" alt="values-prometheus-grafana.yaml created" width="500">
 <sub>Figure 2. values-prometheus-grafana.yaml created.</sub>
 <br><br>
 
@@ -220,7 +220,7 @@ spec:
 EOF
 ```
 
-<img src="img/grafana-httproute.png" alt="grafana httproute created" width="600">
+<img src="img/grafana-httproute.png" alt="grafana httproute created" width="500">
 <sub>Figure 7. Grafana HTTPRoute created.</sub>
 <br><br>
 
@@ -235,7 +235,7 @@ http://192.168.18.230/prometheus
 ```
 
 <img src="img/prometheus-ui.png" alt="Prometheus UI" width="800">
-<br><sub>Figure 8. Prometheus UI accessible at http://192.168.18.230/prometheus.</sub>
+<sub>Figure 8. Prometheus UI accessible at http://192.168.18.230/prometheus.</sub>
 <br><br>
 
 Access Grafana from your browser. Login with `admin` / `unmsm`.
