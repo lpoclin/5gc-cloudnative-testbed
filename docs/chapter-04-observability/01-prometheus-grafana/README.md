@@ -106,7 +106,7 @@ grafana:
   additionalDataSources:
     - name: Loki
       type: loki
-      url: http://loki.loki.svc.cluster.local:3100
+      url: http://loki-gateway.loki.svc.cluster.local
       access: proxy
       isDefault: false
       jsonData:
@@ -120,7 +120,7 @@ EOF
 
 > **Note:** Replace `192.168.18.230` with the address shown in `kubectl get gateway -n monitoring` if your Gateway IP differs.
 
-<img src="img/values-created.png" alt="values-prometheus-grafana.yaml created" width="500">
+<img src="img/values-created.png" alt="values-prometheus-grafana.yaml created" width="800">
 <sub>Figure 2. values-prometheus-grafana.yaml created.</sub>
 <br><br>
 
