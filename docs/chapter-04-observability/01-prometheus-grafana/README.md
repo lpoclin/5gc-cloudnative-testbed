@@ -259,4 +259,4 @@ http://192.168.18.230/grafana
 
 ✅ You are here: `chapter-04-observability / 01-prometheus-grafana`
 
-⏭️ Next: [02 — Loki →](../02-loki/README.md)
+⏭️ Next: [02 — Loki and Grafana Alloy →](../02-loki-alloy/README.md)
