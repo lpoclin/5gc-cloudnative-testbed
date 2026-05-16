@@ -16,23 +16,27 @@ This section enables the Kubernetes Gateway API on the cluster using Cilium's bu
 
 ## Access Layout
 
+Two Gateways are deployed. One handles path-based routing for all observability UIs. The other is dedicated to Hubble UI, which requires serving from the root path due to a React router limitation ([cilium/hubble#1704](https://github.com/cilium/hubble/issues/1704)).
+
 | UI | Path | Chapter |
 |---|---|---|
-| Grafana | /grafana | 4 |
-| Prometheus | /prometheus | 4 |
-| Hubble UI | /hubble | 4 |
-| Longhorn | /longhorn | 3 |
-| free5GC WebUI | /free5gc | 5 |
+| Grafana | http://192.168.18.230/grafana | 4 |
+| Prometheus | http://192.168.18.230/prometheus | 4 |
+| Longhorn | http://192.168.18.230/longhorn | 4 |
+| free5GC WebUI | http://192.168.18.230/free5gc | 5 |
+| Hubble UI | http://192.168.18.231/ | 4 |
 
 ---
 
-## Gateway IP Address
+## IP Pool
 
-| Parameter | Value |
+A /29 CIDR reserves 8 IPs (.230 to .237) from the local network for Gateway services.
+
+| Gateway | IP |
 |---|---|
-| Gateway IP | 192.168.18.230 |
-| Access URL | http://192.168.18.230/\<path\> |
-| DHCP pool end | 192.168.18.220 |
+| observability-gateway | 192.168.18.230 |
+| hubble-gateway | 192.168.18.231 |
+| available | 192.168.18.232 to .237 |
 
 ---
 
@@ -107,6 +111,8 @@ kubectl get gatewayclass
 
 ## Step 5 — Create IP Pool
 
+The pool reserves 8 IPs from the local network for Gateway services.
+
 ```bash
 kubectl apply -f - <<EOF
 apiVersion: cilium.io/v2
@@ -115,12 +121,12 @@ metadata:
   name: local-pool
 spec:
   blocks:
-  - cidr: "192.168.18.230/32"
+  - cidr: "192.168.18.230/29"
 EOF
 ```
 
 <img src="img/ippool-created.png" alt="CiliumLoadBalancerIPPool created output" width="500">
-<sub>Figure 5. IP pool created. 192.168.18.230 is reserved for the Gateway and outside the router DHCP pool.</sub>
+<sub>Figure 5. IP pool created with 8 reserved IPs from 192.168.18.230 to 192.168.18.237.</sub>
 <br><br>
 
 ---
@@ -190,32 +196,62 @@ EOF
 
 ---
 
-## Step 8 — Verify
+## Step 8 — Create the Hubble Gateway
+
+Hubble UI requires serving from the root path. A dedicated Gateway is created in the kube-system namespace so it receives its own IP and HTTPRoutes can target it from `/`.
 
 ```bash
-kubectl get gateway -n monitoring
-kubectl get svc -n monitoring
+kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: hubble-gateway
+  namespace: kube-system
+spec:
+  gatewayClassName: cilium
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: All
+EOF
 ```
 
-<img src="img/gateway-verify.png" alt="gateway showing PROGRAMMED True and IP 192.168.18.230" width="800">
-<sub>Figure 8. Gateway PROGRAMMED: True with address 192.168.18.230.</sub>
+<img src="img/hubble-gateway-created.png" alt="hubble-gateway created output" width="500">
+<sub>Figure 8. hubble-gateway created in the kube-system namespace with address 192.168.18.231.</sub>
+<br><br>
+
+---
+
+## Step 9 — Verify
+
+```bash
+kubectl get gateway -A
+kubectl get svc -A | grep cilium-gateway
+```
+
+<img src="img/gateway-verify.png" alt="kubectl get gateway showing both gateways PROGRAMMED True" width="800">
+<sub>Figure 9. Both Gateways PROGRAMMED: True. observability-gateway at 192.168.18.230 and hubble-gateway at 192.168.18.231.</sub>
 <br><br>
 
 ```bash
 curl -I http://192.168.18.230
+curl -I http://192.168.18.231
 ```
 
-<img src="img/curl-verify.png" alt="curl -I http://192.168.18.230 returning 404 with server envoy" width="500">
-<sub>Figure 9. curl returns HTTP 404 from Envoy. The Gateway is operational. HTTPRoutes for each UI are configured in their respective chapters.</sub>
+<img src="img/curl-verify.png" alt="curl output for both gateways" width="500">
+<sub>Figure 10. observability-gateway returns 404 at root path (routes are subpath only). hubble-gateway returns 200 serving Hubble UI.</sub>
 <br><br>
 
 | Check | Expected |
 |---|---|
-| Gateway PROGRAMMED | True |
-| Gateway ADDRESS | 192.168.18.230 |
-| Service EXTERNAL-IP | 192.168.18.230 |
-| curl response | 404 from Envoy (no routes yet) |
-| ping | No response. Cilium handles TCP/UDP only. ICMP is not forwarded by design |
+| observability-gateway ADDRESS | 192.168.18.230 |
+| hubble-gateway ADDRESS | 192.168.18.231 |
+| curl 192.168.18.230 | 404 — root path has no route |
+| curl 192.168.18.231 | 200 — Hubble UI |
+| ping | No response. Cilium LB handles TCP/UDP only |
 
 > **Note:** HTTPRoutes for each UI are created in their respective chapters once each service is deployed.
 
@@ -231,6 +267,9 @@ curl -I http://192.168.18.230
       https://docs.cilium.io/en/v1.19/network/l2-announcements/ [Accessed: May 2026]
 - \[4\] Kubernetes SIG Network, "Gateway API."
       https://gateway-api.sigs.k8s.io/ [Accessed: May 2026]
+- \[5\] cilium/hubble, "Hubble baseUrl with Gateway and HTTPRoute."
+      https://github.com/cilium/hubble/issues/1704 [Accessed: May 2026]
+
 
 ---
 
