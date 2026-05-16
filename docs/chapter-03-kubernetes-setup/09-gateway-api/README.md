@@ -16,27 +16,26 @@ This section enables the Kubernetes Gateway API on the cluster using Cilium's bu
 
 ## Access Layout
 
-Two Gateways are deployed. One handles path-based routing for all observability UIs. The other is dedicated to Hubble UI, which requires serving from the root path due to a React router limitation ([cilium/hubble#1704](https://github.com/cilium/hubble/issues/1704)).
+Three Gateways are deployed. The observability-gateway handles path-based routing for all tools. Hubble UI and Longhorn UI are React SPAs that require serving from the root path, so each gets a dedicated IP.
 
-| UI | Path | Chapter |
+| UI | URL | Chapter |
 |---|---|---|
 | Grafana | http://192.168.18.230/grafana | 4 |
 | Prometheus | http://192.168.18.230/prometheus | 4 |
-| Longhorn | http://192.168.18.230/longhorn | 4 |
 | free5GC WebUI | http://192.168.18.230/free5gc | 5 |
-| Hubble UI | http://192.168.18.231/ | 4 |
+| Hubble UI | http://192.168.18.231 | 4 |
+| Longhorn UI | http://192.168.18.232 | 4 |
 
 ---
 
 ## IP Pool
 
-A /29 CIDR reserves 8 IPs (.230 to .237) from the local network for Gateway services.
-
-| Gateway | IP |
-|---|---|
-| observability-gateway | 192.168.18.230 |
-| hubble-gateway | 192.168.18.231 |
-| available | 192.168.18.232 to .237 |
+| Gateway | IP | Namespace |
+|---|---|---|
+| observability-gateway | 192.168.18.230 | monitoring |
+| hubble-gateway | 192.168.18.231 | kube-system |
+| longhorn-gateway | 192.168.18.232 | longhorn-system |
+| available | 192.168.18.233 to .237 | |
 
 ---
 
@@ -100,7 +99,7 @@ kubectl rollout restart ds/cilium -n kube-system
 ## Step 4 — Verify GatewayClass
 
 ```bash
-kubectl get gatewayclass
+kubectl get gatewayclass -o wide
 ```
 
 <img src="img/gatewayclass.png" alt="kubectl get gatewayclass showing cilium Accepted" width="800">
@@ -111,7 +110,7 @@ kubectl get gatewayclass
 
 ## Step 5 — Create IP Pool
 
-The pool reserves 8 IPs from the local network for Gateway services.
+The pool reserves IPs from 192.168.18.230 to 192.168.18.237 for Gateway services.
 
 ```bash
 kubectl apply -f - <<EOF
@@ -121,12 +120,13 @@ metadata:
   name: local-pool
 spec:
   blocks:
-  - cidr: "192.168.18.230/29"
+  - start: "192.168.18.230"
+    stop: "192.168.18.237"
 EOF
 ```
 
-<img src="img/ippool-created.png" alt="CiliumLoadBalancerIPPool created output" width="500">
-<sub>Figure 5. IP pool created with 8 reserved IPs from 192.168.18.230 to 192.168.18.237.</sub>
+<img src="img/ippool-created.png" alt="CiliumLoadBalancerIPPool created output" width="800">
+<sub>Figure 5. IP pool created. IPs 192.168.18.230 to .237 are reserved for Gateway services.</sub>
 <br><br>
 
 ---
@@ -160,7 +160,7 @@ EOF
 ```
 
 <img src="img/l2-policy-created.png" alt="CiliumL2AnnouncementPolicy created output" width="500">
-<sub>Figure 6. L2 Announcement Policy created. k8s-worker-3 will send ARP replies for 192.168.18.230 on the ens18 interface.</sub>
+<sub>Figure 6. L2 Announcement Policy created. k8s-worker-3 will send ARP replies for all LoadBalancer IPs in the pool on the ens18 interface.</sub>
 <br><br>
 
 ---
@@ -178,6 +178,8 @@ kind: Gateway
 metadata:
   name: observability-gateway
   namespace: monitoring
+  annotations:
+    cilium.io/lb-ipam-ips: "192.168.18.230"
 spec:
   gatewayClassName: cilium
   listeners:
@@ -190,8 +192,8 @@ spec:
 EOF
 ```
 
-<img src="img/gateway-created.png" alt="namespace and gateway created output" width="500">
-<sub>Figure 7. monitoring namespace and observability-gateway created.</sub>
+<img src="img/gateway-created.png" alt="observability-gateway created output" width="800">
+<sub>Figure 7. monitoring namespace and observability-gateway created with address 192.168.18.230.</sub>
 <br><br>
 
 ---
@@ -207,6 +209,8 @@ kind: Gateway
 metadata:
   name: hubble-gateway
   namespace: kube-system
+  annotations:
+    cilium.io/lb-ipam-ips: "192.168.18.231"
 spec:
   gatewayClassName: cilium
   listeners:
@@ -219,38 +223,72 @@ spec:
 EOF
 ```
 
-<img src="img/hubble-gateway-created.png" alt="hubble-gateway created output" width="500">
-<sub>Figure 8. hubble-gateway created in the kube-system namespace with address 192.168.18.231.</sub>
+<img src="img/hubble-gateway-created.png" alt="hubble-gateway created output" width="800">
+<sub>Figure 8. hubble-gateway created with address 192.168.18.231.</sub>
 <br><br>
 
 ---
 
-## Step 9 — Verify
+## Step 9 — Create the Longhorn Gateway
+
+Longhorn UI also requires serving from the root path for the same reason as Hubble UI.
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: longhorn-gateway
+  namespace: longhorn-system
+  annotations:
+    cilium.io/lb-ipam-ips: "192.168.18.232"
+spec:
+  gatewayClassName: cilium
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: All
+EOF
+```
+
+<img src="img/longhorn-gateway-created.png" alt="longhorn-gateway created output" width="800">
+<sub>Figure 9. longhorn-gateway created with address 192.168.18.232.</sub>
+<br><br>
+
+---
+
+## Step 10 — Verify
 
 ```bash
 kubectl get gateway -A
 kubectl get svc -A | grep cilium-gateway
 ```
 
-<img src="img/gateway-verify.png" alt="kubectl get gateway showing both gateways PROGRAMMED True" width="800">
-<sub>Figure 9. Both Gateways PROGRAMMED: True. observability-gateway at 192.168.18.230 and hubble-gateway at 192.168.18.231.</sub>
+<img src="img/gateway-verify.png" alt="kubectl get gateway showing all three gateways PROGRAMMED True" width="800">
+<sub>Figure 10. All three Gateways PROGRAMMED: True with their assigned IPs.</sub>
 <br><br>
 
 ```bash
 curl -I http://192.168.18.230
 curl -I http://192.168.18.231
+curl -I http://192.168.18.232
 ```
 
-<img src="img/curl-verify.png" alt="curl output for both gateways" width="500">
-<sub>Figure 10. observability-gateway returns 404 at root path (routes are subpath only). hubble-gateway returns 200 serving Hubble UI.</sub>
+<img src="img/curl-verify.png" alt="curl output for all three gateways" width="500">
+<sub>Figure 11. observability-gateway returns 404 at root path as expected. hubble-gateway and longhorn-gateway return 200 serving their respective UIs.</sub>
 <br><br>
 
 | Check | Expected |
 |---|---|
 | observability-gateway ADDRESS | 192.168.18.230 |
 | hubble-gateway ADDRESS | 192.168.18.231 |
+| longhorn-gateway ADDRESS | 192.168.18.232 |
 | curl 192.168.18.230 | 404 — root path has no route |
 | curl 192.168.18.231 | 200 — Hubble UI |
+| curl 192.168.18.232 | 200 — Longhorn UI |
 | ping | No response. Cilium LB handles TCP/UDP only |
 
 > **Note:** HTTPRoutes for each UI are created in their respective chapters once each service is deployed.
