@@ -57,19 +57,13 @@ metadata:
   namespace: longhorn-system
 spec:
   parentRefs:
-  - name: observability-gateway
-    namespace: monitoring
+  - name: longhorn-gateway
+    namespace: longhorn-system
   rules:
   - matches:
     - path:
         type: PathPrefix
-        value: /longhorn
-    filters:
-    - type: URLRewrite
-      urlRewrite:
-        path:
-          type: ReplacePrefixMatch
-          replacePrefixMatch: /
+        value: /
     backendRefs:
     - name: longhorn-frontend
       port: 80
