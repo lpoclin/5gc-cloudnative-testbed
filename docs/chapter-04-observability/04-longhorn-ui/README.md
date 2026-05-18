@@ -99,4 +99,4 @@ http://192.168.18.230/longhorn
 
 ✅ You are here: `chapter-04-observability / 04-longhorn-ui`
 
-⏭️ Next Chapter: [Chapter 5 — 5G Core Deployment → 01 gtp5g](../../chapter-05-5g-core/01-gtp5g/README.md)
+⏭️ Next Chapter: [Chapter 5 — 5G Network Environment → 01 gtp5g](../../chapter-05-5g-network-environment/01-gtp5g/README.md)
