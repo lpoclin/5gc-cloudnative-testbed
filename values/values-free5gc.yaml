@@ -33,7 +33,7 @@ global:
       n9network:
         masterIf: ens18
 
-# MongoDB — Longhorn StorageClass, no hardcoded PV
+# MongoDB — Longhorn StorageClass, customize it if needed
 mongodb:
   nodeSelector:
     role: general

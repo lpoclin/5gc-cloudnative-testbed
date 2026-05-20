@@ -16,7 +16,7 @@ global:
       n3network:
         masterIf: ens18
 
-# gNB and UE on nodes labeled role=userplane (same node as UPF for N3 adjacency)
+# gNB and UE on nodes labeled role=userplane (co-located with UPFs, requires kernel 5.15 + gtp5g)
 gnb:
   nodeSelector:
     role: userplane
