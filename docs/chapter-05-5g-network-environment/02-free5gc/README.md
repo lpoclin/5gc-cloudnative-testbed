@@ -70,19 +70,51 @@ sudo grep allowedUnsafe /var/lib/kubelet/config.yaml
 
 ---
 
-## Step 3 — Configure IP Masquerade on k8s-worker-2
+## Step 3 — Configure N6 gateway on k8s-worker-2
 
-This rule enables UE traffic from the 10.60.0.0/16 subnet to reach external networks via the node's primary interface.
+The free5GC UPF chart handles masquerade for UE traffic internally via the N6 interface. The host only needs to provide the N6 gateway IP (`10.100.100.1`) and NAT the N6 subnet to reach the internet.
 
 ```bash
-sudo iptables -t nat -A POSTROUTING -s 10.60.0.0/16 -o ens18 -j MASQUERADE
-sudo apt install -y iptables-persistent
-sudo netfilter-persistent save
-sudo cat /etc/iptables/rules.v4 | grep MASQUERADE
+sudo tee /etc/systemd/system/macv-n6.service << 'EOF'
+[Unit]
+Description=N6 gateway interface for free5GC UPF
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c '\
+  ip link add macv-n6 link ens18 type ipvlan mode l2 && \
+  ip addr add 10.100.100.1/24 dev macv-n6 && \
+  ip link set macv-n6 up && \
+  iptables -t nat -A POSTROUTING -s 10.100.100.0/24 -o ens18 -j MASQUERADE'
+ExecStop=/bin/bash -c '\
+  iptables -t nat -D POSTROUTING -s 10.100.100.0/24 -o ens18 -j MASQUERADE; \
+  ip link del macv-n6'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable macv-n6
+sudo systemctl start macv-n6
 ```
 
-<img src="img/masquerade.png" alt="iptables masquerade rule applied" width="800">
-<sub>Figure 2. Masquerade rule applied and persisted. UE traffic from 10.60.0.0/16 is NATed via ens18.</sub>
+<img src="img/macv-n6-service.png" alt="macv-n6 systemd service created and started" width="800">
+<sub>Figure 2. macv-n6 service created, enabled and started.</sub>
+<br><br>
+
+Verify:
+
+```bash
+sudo systemctl status macv-n6
+ip addr show macv-n6
+sudo iptables -t nat -L POSTROUTING -n | grep 10.100.100
+```
+
+<img src="img/macv-n6-verify.png" alt="macv-n6 interface and iptables rule verified" width="800">
+<sub>Figure 3. N6 gateway 10.100.100.1/24 active and MASQUERADE rule applied.</sub>
 <br><br>
 
 ---
@@ -103,7 +135,7 @@ cd free5gc-helm/charts
 ```
 
 <img src="img/git-clone.png" alt="git clone free5gc-helm v4.2.2" width="800">
-<sub>Figure 3. free5gc-helm v4.2.2 cloned.</sub>
+<sub>Figure 4. free5gc-helm v4.2.2 cloned.</sub>
 <br><br>
 
 ---
@@ -118,7 +150,7 @@ curl -O https://raw.githubusercontent.com/lpoclin/5gc-cloudnative-testbed/main/v
 ```
 
 <img src="img/values-downloaded.png" alt="curl downloading values files" width="800">
-<br><sub>Figure 4. Testbed values files downloaded into free5gc-helm/charts.</sub>
+<br><sub>Figure 5. Testbed values files downloaded into free5gc-helm/charts.</sub>
 <br><br>
 
 The override file sets only what differs from the chart defaults. To adapt to a different environment, change `masterIf` to match your node interface name and `role` label values to match your node labels.
@@ -247,7 +279,7 @@ helm install free5gc ./free5gc/ \
 ```
 
 <img src="img/helm-install.png" alt="helm install free5gc output" width="800">
-<sub>Figure 5. free5GC v4.2.2 installed in the free5gc namespace.</sub>
+<sub>Figure 6. free5GC v4.2.2 installed in the free5gc namespace.</sub>
 <br><br>
 
 ---
@@ -259,7 +291,7 @@ kubectl get pods -n free5gc -o wide
 ```
 
 <img src="img/pods-running.png" alt="kubectl get pods free5gc all running" width="800">
-<sub>Figure 6. All free5GC NFs Running. Control plane on k8s-worker-1, UPF instances on k8s-worker-2, WebUI on k8s-worker-3.</sub>
+<sub>Figure 7. All free5GC NFs Running. Control plane on k8s-worker-1, UPF instances on k8s-worker-2, WebUI on k8s-worker-3.</sub>
 <br><br>
 
 ---
@@ -289,7 +321,7 @@ EOF
 ```
 
 <img src="img/webui-httproute.png" alt="free5gc webui httproute created" width="800">
-<sub>Figure 7. WebUI HTTPRoute created.</sub>
+<sub>Figure 8. WebUI HTTPRoute created.</sub>
 <br><br>
 
 Access free5GC WebUI from your browser. Login with `admin` / `free5gc`.
@@ -299,7 +331,7 @@ http://192.168.18.233
 ```
 
 <img src="img/webui.png" alt="free5GC WebUI" width="800">
-<sub>Figure 8. free5GC WebUI accessible.</sub>
+<sub>Figure 9. free5GC WebUI accessible.</sub>
 <br><br>
 
 ---
