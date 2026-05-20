@@ -1,0 +1,106 @@
+# values-free5gc.yaml
+# UNMSM 5G Cloud-Native Testbed
+# Override values for free5gc-helm v4.2.2
+# Usage: helm install free5gc ./free5gc/ -n free5gc -f values-free5gc.yaml
+#
+# Only values that differ from chart defaults are set here.
+# For full parameter reference see: https://github.com/free5gc/free5gc-helm
+
+global:
+  userPlaneArchitecture: ulcl
+
+  amf:
+    multus:
+      enabled: true
+      n2network:
+        masterIf: ens18        # change to match your node interface (ip -br link show)
+
+  smf:
+    multus:
+      enabled: true
+      n4network:
+        masterIf: ens18
+
+  upf:
+    multus:
+      enabled: true
+      n3network:
+        masterIf: ens18
+      n4network:
+        masterIf: ens18
+      n6network:
+        masterIf: ens18
+      n9network:
+        masterIf: ens18
+
+# MongoDB — Longhorn StorageClass, no hardcoded PV
+mongodb:
+  nodeSelector:
+    role: general
+  persistence:
+    storageClass: longhorn
+    size: 6Gi
+  extraDeploy: []
+
+# Control plane NFs on nodes labeled role=general
+free5gc-amf:
+  amf:
+    nodeSelector:
+      role: general
+free5gc-smf:
+  smf:
+    nodeSelector:
+      role: general
+free5gc-nrf:
+  nrf:
+    nodeSelector:
+      role: general
+free5gc-ausf:
+  ausf:
+    nodeSelector:
+      role: general
+free5gc-udm:
+  udm:
+    nodeSelector:
+      role: general
+free5gc-udr:
+  udr:
+    nodeSelector:
+      role: general
+free5gc-pcf:
+  pcf:
+    nodeSelector:
+      role: general
+free5gc-nssf:
+  nssf:
+    nodeSelector:
+      role: general
+free5gc-chf:
+  chf:
+    nodeSelector:
+      role: general
+free5gc-nef:
+  nef:
+    nodeSelector:
+      role: general
+
+# User plane NFs on nodes labeled role=userplane (kernel 5.15 + gtp5g required)
+free5gc-upf:
+  upf:
+    nodeSelector:
+      role: userplane
+  psaupf1:
+    nodeSelector:
+      role: userplane
+  psaupf2:
+    nodeSelector:
+      role: userplane
+  iupf1:
+    nodeSelector:
+      role: userplane
+
+# WebUI on nodes labeled role=observability (Gateway API HTTPRoute /free5gc)
+free5gc-webui:
+  webui:
+    nodeSelector:
+      role: observability

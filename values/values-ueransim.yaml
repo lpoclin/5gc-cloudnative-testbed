@@ -1,0 +1,26 @@
+# values-ueransim.yaml
+# UNMSM 5G Cloud-Native Testbed
+# Override values for ueransim chart (free5gc-helm v4.2.2)
+# Usage: helm install ueransim ./ueransim/ -n free5gc -f values-ueransim.yaml
+#
+# Only values that differ from chart defaults are set here.
+# For full parameter reference see: https://github.com/free5gc/free5gc-helm
+
+global:
+  free5gcReleaseName: free5gc
+  gnb:
+    multus:
+      enabled: true
+      n2network:
+        masterIf: ens18
+      n3network:
+        masterIf: ens18
+
+# gNB and UE on nodes labeled role=userplane (same node as UPF for N3 adjacency)
+gnb:
+  nodeSelector:
+    role: userplane
+
+ue:
+  nodeSelector:
+    role: userplane
