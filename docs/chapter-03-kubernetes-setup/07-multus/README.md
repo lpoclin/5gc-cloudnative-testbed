@@ -59,6 +59,34 @@ kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-c
 
 ---
 
+## Step 3 — Increase Multus memory limit
+
+The default limit of 50Mi is insufficient under concurrent pod scheduling
+with NAD annotations. Increase it to avoid OOMKilled restarts.
+
+```bash
+kubectl patch daemonset kube-multus-ds -n kube-system --type=json \
+  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"200Mi"},
+       {"op":"replace","path":"/spec/template/spec/containers/0/resources/requests/memory","value":"50Mi"}]'
+```
+
+<img src="img/multus-memory-patch.png" alt="kubectl patch kube-multus-ds memory limit output" width="800">
+<sub>Figure 2. Multus DaemonSet memory limit increased to 200Mi.</sub>
+<br><br>
+
+Verify:
+
+```bash
+kubectl get daemonset kube-multus-ds -n kube-system \
+  -o jsonpath='{.spec.template.spec.containers[0].resources}'
+```
+
+<img src="img/multus-memory-verify.png" alt="kubectl get daemonset resources output showing 200Mi limit" width="800">
+<sub>Figure 3. Multus memory limit confirmed at 200Mi.</sub>
+<br><br>
+
+---
+
 ## Step 3 — Verify Multus DaemonSet
 
 ```bash
@@ -67,7 +95,7 @@ kubectl get pods -n kube-system -o wide
 ```
 
 <img src="img/multus-verify.png" alt="kubectl get daemonset and pods output showing kube-multus-ds running on all nodes" width="800">
-<sub>Figure 2. kube-multus-ds DaemonSet running with one pod per node alongside Cilium DaemonSets. All four kube-multus-ds pods must show Running before proceeding.</sub>
+<sub>Figure 4. kube-multus-ds DaemonSet running with one pod per node alongside Cilium DaemonSets. All four kube-multus-ds pods must show Running before proceeding.</sub>
 <br><br>
 
 ---
@@ -79,7 +107,7 @@ kubectl get crd
 ```
 
 <img src="img/multus-crd.png" alt="kubectl get crd output showing network-attachment-definitions CRD" width="600">
-<sub>Figure 3. network-attachment-definitions.k8s.cni.cncf.io CRD registered alongside Cilium CRDs. NAD resources are created in later chapters to define the 5G network interfaces.</sub>
+<sub>Figure 5. network-attachment-definitions.k8s.cni.cncf.io CRD registered alongside Cilium CRDs. NAD resources are created in later chapters to define the 5G network interfaces.</sub>
 <br><br>
 
 ---

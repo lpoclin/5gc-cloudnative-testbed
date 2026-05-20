@@ -101,7 +101,7 @@ sudo dmesg | grep gtp5g
 ```
 
 <img src="img/gtp5g-verify.png" alt="lsmod, sys/module and dmesg showing gtp5g loaded" width="800">
-<sub>Figure 6. gtp5g module loaded in the kernel. lsmod confirms the module is active, /sys/module/gtp5g confirms it is registered, and dmesg shows the initialization log.</sub>
+<sub>Figure 6. gtp5g v0.10.2 loaded. lsmod, /sys/module and dmesg confirm the module is active and initialized.</sub>
 <br><br>
 
 ---

@@ -81,7 +81,7 @@ EOF
 Access Longhorn UI from your browser:
 
 ```
-http://192.168.18.230/longhorn
+http://192.168.18.232
 ```
 
 <img src="img/longhorn-ui.png" alt="Longhorn UI showing volumes and nodes" width="800">

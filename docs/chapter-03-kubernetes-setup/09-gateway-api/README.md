@@ -22,9 +22,9 @@ Three Gateways are deployed. The observability-gateway handles path-based routin
 |---|---|---|
 | Grafana | http://192.168.18.230/grafana | 4 |
 | Prometheus | http://192.168.18.230/prometheus | 4 |
-| free5GC WebUI | http://192.168.18.230/free5gc | 5 |
 | Hubble UI | http://192.168.18.231 | 4 |
 | Longhorn UI | http://192.168.18.232 | 4 |
+| free5GC WebUI | http://192.168.18.233 | 5 |
 
 ---
 
@@ -35,7 +35,8 @@ Three Gateways are deployed. The observability-gateway handles path-based routin
 | observability-gateway | 192.168.18.230 | monitoring |
 | hubble-gateway | 192.168.18.231 | kube-system |
 | longhorn-gateway | 192.168.18.232 | longhorn-system |
-| available | 192.168.18.233 to .237 | |
+| free5gc-gateway | 192.168.18.233 | free5gc |
+| available | 192.168.18.234 to .237 | |
 
 ---
 
@@ -227,7 +228,40 @@ EOF
 
 ---
 
-## Step 9 — Verify
+## Step 9 — Create the free5GC Gateway
+
+free5GC WebUI is a React SPA that requires serving from the root path.
+A dedicated Gateway is created in the free5gc namespace so it receives
+its own IP.
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: free5gc-gateway
+  namespace: free5gc
+  annotations:
+    cilium.io/lb-ipam-ips: "192.168.18.233"
+spec:
+  gatewayClassName: cilium
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: All
+EOF
+```
+
+<img src="img/free5gc-gateway-created.png" alt="free5gc-gateway created output" width="800">
+<sub>Figure 8. free5gc-gateway created with address 192.168.18.233.</sub>
+<br><br>
+
+---
+
+## Step 10 — Verify
 
 ```bash
 kubectl get gateway -A
@@ -235,17 +269,18 @@ kubectl get svc -A | grep cilium-gateway
 ```
 
 <img src="img/gateway-verify.png" alt="kubectl get gateway showing all three gateways PROGRAMMED True" width="800">
-<sub>Figure 8. All three Gateways PROGRAMMED: True with their assigned IPs.</sub>
+<sub>Figure 9. All four Gateways PROGRAMMED: True with their assigned IPs.</sub>
 <br><br>
 
 ```bash
 curl -I http://192.168.18.230
 curl -I http://192.168.18.231
 curl -I http://192.168.18.232
+curl -I http://192.168.18.233
 ```
 
 <img src="img/curl-verify.png" alt="curl output for all three gateways" width="500">
-<sub>Figure 9. observability-gateway returns 404 at root path as expected. hubble-gateway and longhorn-gateway return 200 serving their respective UIs.</sub>
+<sub>Figure 10. observability-gateway returns 404 at root path as expected. hubble-gateway and longhorn-gateway return 200 serving their respective UIs.</sub>
 <br><br>
 
 | Check | Expected |
