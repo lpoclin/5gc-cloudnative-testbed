@@ -99,6 +99,8 @@ sudo tee /etc/sysctl.d/k8s.conf <<EOF
 net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 net.ipv4.ip_forward                 = 1
+fs.inotify.max_user_instances       = 512
+fs.inotify.max_user_watches         = 524288
 EOF
 
 sudo sysctl --system
@@ -115,6 +117,8 @@ The `sysctl.d` file persists the parameters across reboots. `sysctl --system` ap
 | net.bridge.bridge-nf-call-iptables | 1 | Allows iptables rules to process bridged IPv4 traffic between pods |
 | net.bridge.bridge-nf-call-ip6tables | 1 | Same as above for IPv6 |
 | net.ipv4.ip_forward | 1 | Allows the kernel to forward packets between interfaces — required for pod-to-pod and pod-to-external traffic |
+| fs.inotify.max_user_instances | 512 | Maximum number of inotify instances per user |
+| fs.inotify.max_user_watches | 524288 | Maximum number of files that can be watched with inotify |
 
 ---
 

@@ -61,54 +61,21 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/downloa
 
 ---
 
-## Step 3 — Upgrade Cilium with Gateway API and L2 Announcements
 
-```bash
-helm upgrade cilium cilium/cilium \
-  --version 1.19.3 \
-  --namespace kube-system \
-  --reuse-values \
-  --set gatewayAPI.enabled=true \
-  --set l2announcements.enabled=true \
-  --set externalIPs.enabled=true
-```
 
-<img src="img/cilium-upgrade.png" alt="helm upgrade cilium output" width="500">
-<sub>Figure 2. Cilium upgraded with Gateway API and L2 Announcements enabled.</sub>
-<br><br>
-
-| Flag | Component | Purpose |
-|---|---|---|
-| `gatewayAPI.enabled=true` | Operator + Agent | Operator validates and translates Gateway and HTTPRoute resources into CiliumEnvoyConfig. Agent configures Envoy on each node |
-| `l2announcements.enabled=true` | Agent | Lease-based leader election per service IP. Winning node sends ARP replies for LoadBalancer IPs on the local network |
-| `externalIPs.enabled=true` | Agent | Required alongside L2 Announcements. Load-balances traffic arriving at ExternalIP addresses on the node |
-
-Restart Cilium to apply the new configuration:
-
-```bash
-kubectl rollout restart deployment/cilium-operator -n kube-system
-kubectl rollout restart ds/cilium -n kube-system
-```
-
-<img src="img/cilium-restart.png" alt="cilium rollout restart output" width="800">
-<sub>Figure 3. Cilium operator and DaemonSet restarted.</sub>
-<br><br>
-
----
-
-## Step 4 — Verify GatewayClass
+## Step 3 — Verify GatewayClass
 
 ```bash
 kubectl get gatewayclass -o wide
 ```
 
 <img src="img/gatewayclass.png" alt="kubectl get gatewayclass showing cilium Accepted" width="800">
-<sub>Figure 4. Cilium GatewayClass registered and Accepted.</sub>
+<sub>Figure 2. Cilium GatewayClass registered and Accepted.</sub>
 <br><br>
 
 ---
 
-## Step 5 — Create IP Pool
+## Step 4 — Create IP Pool
 
 The pool reserves IPs from 192.168.18.230 to 192.168.18.237 for Gateway services.
 
@@ -126,12 +93,12 @@ EOF
 ```
 
 <img src="img/ippool-created.png" alt="CiliumLoadBalancerIPPool created output" width="800">
-<sub>Figure 5. IP pool created. IPs 192.168.18.230 to .237 are reserved for Gateway services.</sub>
+<sub>Figure 3. IP pool created. IPs 192.168.18.230 to .237 are reserved for Gateway services.</sub>
 <br><br>
 
 ---
 
-## Step 6 — Create L2 Announcement Policy
+## Step 5 — Create L2 Announcement Policy
 
 Verify the primary network interface name on the nodes before applying:
 
@@ -160,12 +127,12 @@ EOF
 ```
 
 <img src="img/l2-policy-created.png" alt="CiliumL2AnnouncementPolicy created output" width="500">
-<sub>Figure 6. L2 Announcement Policy created. k8s-worker-3 will send ARP replies for all LoadBalancer IPs in the pool on the ens18 interface.</sub>
+<sub>Figure 4. L2 Announcement Policy created. k8s-worker-3 will send ARP replies for all LoadBalancer IPs in the pool on the ens18 interface.</sub>
 <br><br>
 
 ---
 
-## Step 7 — Create the Observability Gateway
+## Step 6 — Create the Observability Gateway
 
 ```bash
 kubectl create namespace monitoring
@@ -193,12 +160,12 @@ EOF
 ```
 
 <img src="img/gateway-created.png" alt="observability-gateway created output" width="800">
-<sub>Figure 7. monitoring namespace and observability-gateway created with address 192.168.18.230.</sub>
+<sub>Figure 5. monitoring namespace and observability-gateway created with address 192.168.18.230.</sub>
 <br><br>
 
 ---
 
-## Step 8 — Create the Hubble Gateway
+## Step 7 — Create the Hubble Gateway
 
 Hubble UI requires serving from the root path. A dedicated Gateway is created in the kube-system namespace so it receives its own IP and HTTPRoutes can target it from `/`.
 
@@ -224,12 +191,12 @@ EOF
 ```
 
 <img src="img/hubble-gateway-created.png" alt="hubble-gateway created output" width="800">
-<sub>Figure 8. hubble-gateway created with address 192.168.18.231.</sub>
+<sub>Figure 6. hubble-gateway created with address 192.168.18.231.</sub>
 <br><br>
 
 ---
 
-## Step 9 — Create the Longhorn Gateway
+## Step 8 — Create the Longhorn Gateway
 
 Longhorn UI also requires serving from the root path for the same reason as Hubble UI.
 
@@ -255,12 +222,12 @@ EOF
 ```
 
 <img src="img/longhorn-gateway-created.png" alt="longhorn-gateway created output" width="800">
-<sub>Figure 9. longhorn-gateway created with address 192.168.18.232.</sub>
+<sub>Figure 7. longhorn-gateway created with address 192.168.18.232.</sub>
 <br><br>
 
 ---
 
-## Step 10 — Verify
+## Step 9 — Verify
 
 ```bash
 kubectl get gateway -A
@@ -268,7 +235,7 @@ kubectl get svc -A | grep cilium-gateway
 ```
 
 <img src="img/gateway-verify.png" alt="kubectl get gateway showing all three gateways PROGRAMMED True" width="800">
-<sub>Figure 10. All three Gateways PROGRAMMED: True with their assigned IPs.</sub>
+<sub>Figure 8. All three Gateways PROGRAMMED: True with their assigned IPs.</sub>
 <br><br>
 
 ```bash
@@ -278,7 +245,7 @@ curl -I http://192.168.18.232
 ```
 
 <img src="img/curl-verify.png" alt="curl output for all three gateways" width="500">
-<sub>Figure 11. observability-gateway returns 404 at root path as expected. hubble-gateway and longhorn-gateway return 200 serving their respective UIs.</sub>
+<sub>Figure 9. observability-gateway returns 404 at root path as expected. hubble-gateway and longhorn-gateway return 200 serving their respective UIs.</sub>
 <br><br>
 
 | Check | Expected |

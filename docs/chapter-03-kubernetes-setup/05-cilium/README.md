@@ -90,7 +90,11 @@ helm install cilium cilium/cilium \
   --set k8sServicePort=6443 \
   --set ipam.mode=kubernetes \
   --set hubble.relay.enabled=true \
-  --set hubble.ui.enabled=true
+  --set hubble.ui.enabled=true \
+  --set cni.exclusive=false \
+  --set gatewayAPI.enabled=true \
+  --set l2announcements.enabled=true \
+  --set externalIPs.enabled=true
 ```
 
 <img src="img/cilium-install.png" alt="helm install cilium output" width="600">
@@ -104,6 +108,10 @@ helm install cilium cilium/cilium \
 | `ipam.mode=kubernetes` | Uses the pod CIDR defined in kubeadm init (10.10.0.0/16) |
 | `hubble.relay.enabled` | Enables Hubble relay for aggregated flow data across all nodes |
 | `hubble.ui.enabled` | Enables Hubble web UI for real-time SBI flow visualization |
+| `cni.exclusive=false` | Allows Cilium to coexist with Multus CNI |
+| `gatewayAPI.enabled=true` | Enables Gateway API controller, translates Gateway and HTTPRoute resources into Envoy configuration |
+| `l2announcements.enabled=true` | Enables L2 announcements, sends ARP replies for LoadBalancer IPs on the local network |
+| `externalIPs.enabled=true` | Enables load-balancing for ExternalIP addresses, required alongside L2 announcements |
 
 ---
 
