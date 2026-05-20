@@ -288,9 +288,11 @@ curl -I http://192.168.18.233
 | observability-gateway ADDRESS | 192.168.18.230 |
 | hubble-gateway ADDRESS | 192.168.18.231 |
 | longhorn-gateway ADDRESS | 192.168.18.232 |
+| free5gc-gateway ADDRESS | 192.168.18.233 |
 | curl 192.168.18.230 | 404 — root path has no route |
 | curl 192.168.18.231 | 200 — Hubble UI |
 | curl 192.168.18.232 | 200 — Longhorn UI |
+| curl 192.168.18.233 | 404 — root path has no route |
 | ping | No response. Cilium LB handles TCP/UDP only |
 
 > **Note:** HTTPRoutes for each UI are created in their respective chapters once each service is deployed.
