@@ -63,3 +63,8 @@ prometheus:
 
 hubble:
   address: hubble-relay.kube-system:4245
+
+terminal:
+  enabled: true
+  sshHost: "192.168.18.210"
+  sshPort: 22

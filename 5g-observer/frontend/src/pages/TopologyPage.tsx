@@ -2,49 +2,13 @@ import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import TopologyCanvas from '@/components/Topology/TopologyCanvas'
 import SidePanel from '@/components/Topology/SidePanel'
+import TerminalPanel from '@/components/Terminal/TerminalPanel'
 import { TopologySkeleton } from '@/components/common/LoadingSkeleton'
 import { useToast } from '@/components/common/Toast'
 import { IconRefresh } from '@/components/common/icons'
 import { api } from '@/services/api'
 import { useTopology } from '@/hooks/useTopology'
 import type { TopologyNode, TopologyEdge } from '@/types/topology'
-
-// ─── Collapsible terminal panel ───────────────────────────────────────────────
-
-function TerminalPanel({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <div
-      className="shrink-0 border-t"
-      style={{ borderColor: '#30363d', background: '#0d1117' }}
-    >
-      {/* Terminal header bar */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-1.5 text-xs text-left"
-        style={{ color: '#8b949e', background: '#161b22', borderBottom: open ? '1px solid #30363d' : 'none' }}
-      >
-        <span style={{ color: '#3fb950' }}>▶</span>
-        <span className="font-mono">Terminal</span>
-        <span className="ml-auto">{open ? '▾' : '▸'}</span>
-      </button>
-
-      {open && (
-        <div
-          className="flex items-center justify-center font-mono text-xs"
-          style={{ height: 180, color: '#8b949e', background: '#0d1117' }}
-        >
-          <span>
-            xterm.js terminal — install{' '}
-            <code className="px-1 rounded" style={{ background: '#161b22', color: '#58a6ff' }}>
-              xterm
-            </code>{' '}
-            to enable
-          </span>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 

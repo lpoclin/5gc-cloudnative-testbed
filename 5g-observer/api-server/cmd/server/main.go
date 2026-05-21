@@ -104,6 +104,7 @@ func main() {
 	r.GET("/ws/topology",                      topoH.WatchTopology)
 	r.GET("/ws/logs/:namespace/:pod",          logsH.StreamLogs)
 	r.GET("/ws/packets/:node/:pod/:interface", packetsH.StreamPackets)
+	r.GET("/ws/terminal",                      handlers.TerminalHandler)
 
 	// ── HTTP server ──────────────────────────────────────────────────────────
 	addr := envOr("LISTEN_ADDR", ":8080")
