@@ -29,6 +29,7 @@ export interface TopologyNode {
   podName: string
   namespace: string
   nfType: NFType
+  displayName: string
   nodeName: string
   status: PodStatus
   interfaces: NetworkInterface[]
@@ -42,6 +43,7 @@ export interface TopologyEdge {
   source: string
   target: string
   interface: string
+  label: string
   plane: Plane
   srcIP?: string
   dstIP?: string

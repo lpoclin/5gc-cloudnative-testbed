@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	sigsyaml "sigs.k8s.io/yaml"
 )
 
 // ─── Model types ──────────────────────────────────────────────────────────────
@@ -49,10 +51,10 @@ type PodPhase string
 type PodCondition string
 
 const (
-	PodPhaseRunning   PodPhase = "Running"
-	PodPhasePending   PodPhase = "Pending"
-	PodPhaseFailed    PodPhase = "Failed"
-	PodPhaseUnknown   PodPhase = "Unknown"
+	PodPhaseRunning PodPhase = "Running"
+	PodPhasePending PodPhase = "Pending"
+	PodPhaseFailed  PodPhase = "Failed"
+	PodPhaseUnknown PodPhase = "Unknown"
 )
 
 const (
@@ -80,16 +82,17 @@ type NetworkInterface struct {
 }
 
 type TopologyNode struct {
-	ID         string            `json:"id"`
-	PodName    string            `json:"podName"`
-	Namespace  string            `json:"namespace"`
-	NFType     NFType            `json:"nfType"`
-	NodeName   string            `json:"nodeName"`
-	Status     PodStatus         `json:"status"`
-	Interfaces []NetworkInterface `json:"interfaces"`
-	Age        string            `json:"age"`
-	Image      string            `json:"image"`
-	Labels     map[string]string `json:"labels"`
+	ID          string             `json:"id"`
+	PodName     string             `json:"podName"`
+	Namespace   string             `json:"namespace"`
+	NFType      NFType             `json:"nfType"`
+	DisplayName string             `json:"displayName"`
+	NodeName    string             `json:"nodeName"`
+	Status      PodStatus          `json:"status"`
+	Interfaces  []NetworkInterface `json:"interfaces"`
+	Age         string             `json:"age"`
+	Image       string             `json:"image"`
+	Labels      map[string]string  `json:"labels"`
 }
 
 type TopologyEdge struct {
@@ -97,6 +100,7 @@ type TopologyEdge struct {
 	Source    string `json:"source"`
 	Target    string `json:"target"`
 	Interface string `json:"interface"`
+	Label     string `json:"label"`
 	Plane     Plane  `json:"plane"`
 	SrcIP     string `json:"srcIP,omitempty"`
 	DstIP     string `json:"dstIP,omitempty"`
@@ -118,6 +122,318 @@ type netStatus struct {
 	Default   bool     `json:"default"`
 }
 
+// ─── NF label detection ───────────────────────────────────────────────────────
+
+// formatNFLabel converts the value of the `nf` pod label to (NFType, displayName, skip).
+// Returns skip=true for pods that should be excluded from the topology (e.g., webui).
+func formatNFLabel(nfVal string) (NFType, string, bool) {
+	lower := strings.ToLower(nfVal)
+
+	if lower == "webui" {
+		return NFTypeUnknown, "", true
+	}
+
+	// iUPF variants: iupf, iupf1, iupf2, i-upf, i-upf1
+	if strings.HasPrefix(lower, "iupf") || strings.HasPrefix(lower, "i-upf") {
+		suffix := strings.TrimPrefix(strings.TrimPrefix(lower, "i-upf"), "iupf")
+		num := strings.ToUpper(suffix)
+		if num == "" {
+			num = "1"
+		}
+		return NFTypeIUPF, "iUPF" + num, false
+	}
+
+	// PSA-UPF variants: psaupf1, psaupf2, psa-upf1, psa-upf2
+	if strings.HasPrefix(lower, "psaupf") || strings.HasPrefix(lower, "psa-upf") {
+		suffix := strings.TrimPrefix(strings.TrimPrefix(lower, "psa-upf"), "psaupf")
+		num := strings.ToUpper(suffix)
+		return NFTypeUPF, "PSA-UPF" + num, false
+	}
+
+	exact := map[string]struct {
+		nfType  NFType
+		display string
+	}{
+		"nrf":  {NFTypeNRF, "NRF"},
+		"amf":  {NFTypeAMF, "AMF"},
+		"smf":  {NFTypeSMF, "SMF"},
+		"ausf": {NFTypeAUSF, "AUSF"},
+		"udm":  {NFTypeUDM, "UDM"},
+		"udr":  {NFTypeUDR, "UDR"},
+		"pcf":  {NFTypePCF, "PCF"},
+		"nssf": {NFTypeNSSF, "NSSF"},
+		"chf":  {NFTypeCHF, "CHF"},
+		"nef":  {NFTypeNEF, "NEF"},
+		"upf":  {NFTypeUPF, "UPF"},
+	}
+	if m, ok := exact[lower]; ok {
+		return m.nfType, m.display, false
+	}
+
+	return NFTypeUnknown, strings.ToUpper(nfVal), false
+}
+
+// formatComponentLabel converts the `component` pod label (UERANSIM) to (NFType, displayName, skip).
+func formatComponentLabel(comp string) (NFType, string, bool) {
+	switch strings.ToLower(comp) {
+	case "gnb", "gnodeb":
+		return NFTypeGNB, "gNB", false
+	case "ue":
+		return NFTypeUE, "UE", false
+	default:
+		return NFTypeUnknown, "", true
+	}
+}
+
+// fallbackNFMap is used when both nf and component labels are absent.
+var fallbackNFMap = []struct {
+	keywords []string
+	nfType   NFType
+	display  string
+}{
+	{[]string{"nrf"}, NFTypeNRF, "NRF"},
+	{[]string{"ausf"}, NFTypeAUSF, "AUSF"},
+	{[]string{"udm"}, NFTypeUDM, "UDM"},
+	{[]string{"udr"}, NFTypeUDR, "UDR"},
+	{[]string{"nssf"}, NFTypeNSSF, "NSSF"},
+	{[]string{"chf"}, NFTypeCHF, "CHF"},
+	{[]string{"nef"}, NFTypeNEF, "NEF"},
+	{[]string{"pcf"}, NFTypePCF, "PCF"},
+	{[]string{"amf"}, NFTypeAMF, "AMF"},
+	{[]string{"smf"}, NFTypeSMF, "SMF"},
+	// iUPF before UPF
+	{[]string{"iupf", "i-upf"}, NFTypeIUPF, "iUPF"},
+	{[]string{"psaupf", "psa-upf"}, NFTypeUPF, "PSA-UPF"},
+	{[]string{"upf"}, NFTypeUPF, "UPF"},
+	{[]string{"gnb", "gnode", "gnodeb"}, NFTypeGNB, "gNB"},
+	{[]string{"ue", "uesim"}, NFTypeUE, "UE"},
+}
+
+func detectNFType(pod *corev1.Pod, ifaces []NetworkInterface) (NFType, string) {
+	// 1. nf label — most reliable (free5GC labels each pod with nf=amf, nf=psaupf1, etc.)
+	if nfVal, ok := pod.Labels["nf"]; ok {
+		nfType, display, skip := formatNFLabel(nfVal)
+		if skip {
+			return NFTypeUnknown, ""
+		}
+		if nfType != NFTypeUnknown {
+			return nfType, display
+		}
+	}
+
+	// 2. component label — UERANSIM uses component=gnb, component=ue
+	if comp, ok := pod.Labels["component"]; ok {
+		nfType, display, skip := formatComponentLabel(comp)
+		if !skip && nfType != NFTypeUnknown {
+			return nfType, display
+		}
+	}
+
+	// 3. Pod name fallback
+	name := strings.ToLower(pod.Name)
+
+	// iUPF interface heuristic: n3+n9 without n6
+	ifaceNames := make(map[string]bool)
+	for _, iface := range ifaces {
+		ifaceNames[iface.Interface] = true
+	}
+	if strings.Contains(name, "upf") {
+		if ifaceNames["n9"] && ifaceNames["n3"] && !ifaceNames["n6"] {
+			return NFTypeIUPF, "iUPF"
+		}
+		if strings.Contains(name, "psa") {
+			return NFTypeUPF, "PSA-UPF"
+		}
+		return NFTypeUPF, "UPF"
+	}
+
+	for _, entry := range fallbackNFMap {
+		for _, kw := range entry.keywords {
+			if strings.Contains(name, kw) {
+				return entry.nfType, entry.display
+			}
+		}
+	}
+
+	return NFTypeUnknown, "UNKNOWN"
+}
+
+// numberDuplicates appends -1, -2 suffixes when multiple nodes share the same displayName.
+func numberDuplicates(nodes []TopologyNode) {
+	count := make(map[string]int)
+	for _, n := range nodes {
+		if n.NFType != NFTypeDN {
+			count[n.DisplayName]++
+		}
+	}
+	seen := make(map[string]int)
+	for i := range nodes {
+		if nodes[i].NFType == NFTypeDN {
+			continue
+		}
+		name := nodes[i].DisplayName
+		if count[name] > 1 {
+			seen[name]++
+			nodes[i].DisplayName = fmt.Sprintf("%s-%d", name, seen[name])
+		}
+	}
+}
+
+// ─── UPF configmap / DNN detection ───────────────────────────────────────────
+
+type upfDNNItem struct {
+	DNN string `json:"dnn"`
+}
+
+type upfConfigSection struct {
+	DNNList []upfDNNItem `json:"dnnList"`
+}
+
+type upfYAMLDoc struct {
+	Configuration upfConfigSection `json:"configuration"`
+}
+
+type upfDNNEntry struct {
+	nfLabel string // value of the `nf` label on the configmap; "" = applies to all UPFs
+	dnns    []string
+}
+
+func getUPFDNNEntries(ctx context.Context, cs *kubernetes.Clientset, namespaces []string) []upfDNNEntry {
+	var entries []upfDNNEntry
+
+	for _, ns := range namespaces {
+		cms, err := cs.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			continue
+		}
+		for _, cm := range cms.Items {
+			raw, ok := cm.Data["upfcfg.yaml"]
+			if !ok {
+				continue
+			}
+			var doc upfYAMLDoc
+			if err := sigsyaml.Unmarshal([]byte(raw), &doc); err != nil {
+				continue
+			}
+			var dnns []string
+			for _, d := range doc.Configuration.DNNList {
+				if d.DNN != "" {
+					dnns = append(dnns, d.DNN)
+				}
+			}
+			if len(dnns) == 0 {
+				continue
+			}
+			nfLabel := cm.Labels["nf"]
+			entries = append(entries, upfDNNEntry{nfLabel: nfLabel, dnns: dnns})
+		}
+	}
+	return entries
+}
+
+// buildDNNodes returns virtual DN nodes and two lookup maps:
+//   - upfNodeDNNs: UPF node ID → []dnn (which DNNs each UPF serves)
+//   - dnByDNN: dnn string → DN TopologyNode
+func buildDNNodes(nodes []TopologyNode, entries []upfDNNEntry) ([]TopologyNode, map[string][]string, map[string]TopologyNode) {
+	upfNodeDNNs := make(map[string][]string)
+
+	// Index UPF nodes by their nf label for matching
+	upfByNFLabel := make(map[string][]string)
+	var hasUPF bool
+	for _, n := range nodes {
+		if n.NFType == NFTypeUPF || n.NFType == NFTypeIUPF {
+			if n.NFType == NFTypeUPF {
+				hasUPF = true
+			}
+			if nfLabel, ok := n.Labels["nf"]; ok && nfLabel != "" {
+				upfByNFLabel[nfLabel] = append(upfByNFLabel[nfLabel], n.ID)
+			}
+		}
+	}
+
+	for _, entry := range entries {
+		if entry.nfLabel != "" {
+			for _, nodeID := range upfByNFLabel[entry.nfLabel] {
+				upfNodeDNNs[nodeID] = append(upfNodeDNNs[nodeID], entry.dnns...)
+			}
+		} else {
+			for _, n := range nodes {
+				if n.NFType == NFTypeUPF {
+					upfNodeDNNs[n.ID] = append(upfNodeDNNs[n.ID], entry.dnns...)
+				}
+			}
+		}
+	}
+
+	// Collect all unique DNNs across all UPFs
+	allDNNs := make(map[string]struct{})
+	for _, dnns := range upfNodeDNNs {
+		for _, d := range dnns {
+			allDNNs[d] = struct{}{}
+		}
+	}
+
+	// Default if no configmaps found
+	if len(allDNNs) == 0 && hasUPF {
+		allDNNs["internet"] = struct{}{}
+	}
+
+	// UPFs with no DNN mapping → connect to all DN nodes
+	for _, n := range nodes {
+		if n.NFType == NFTypeUPF && len(upfNodeDNNs[n.ID]) == 0 && len(allDNNs) > 0 {
+			var all []string
+			for dnn := range allDNNs {
+				all = append(all, dnn)
+			}
+			sort.Strings(all)
+			upfNodeDNNs[n.ID] = all
+		}
+	}
+
+	// Deduplicate per-UPF DNN lists
+	for id, dnns := range upfNodeDNNs {
+		seen := make(map[string]bool)
+		var deduped []string
+		for _, d := range dnns {
+			if !seen[d] {
+				seen[d] = true
+				deduped = append(deduped, d)
+			}
+		}
+		upfNodeDNNs[id] = deduped
+	}
+
+	// Build sorted list of DNNs for deterministic node ordering
+	var sortedDNNs []string
+	for dnn := range allDNNs {
+		sortedDNNs = append(sortedDNNs, dnn)
+	}
+	sort.Strings(sortedDNNs)
+
+	dnByDNN := make(map[string]TopologyNode)
+	var dnNodes []TopologyNode
+	for _, dnn := range sortedDNNs {
+		id := "dn-" + strings.ToLower(strings.NewReplacer(" ", "-", "/", "-").Replace(dnn))
+		dn := TopologyNode{
+			ID:          id,
+			PodName:     "dn-" + dnn,
+			DisplayName: dnn,
+			Namespace:   "virtual",
+			NFType:      NFTypeDN,
+			NodeName:    "",
+			Status:      PodStatus{Phase: PodPhaseRunning, Ready: true, Condition: CondRunning},
+			Interfaces:  []NetworkInterface{},
+			Age:         "∞",
+			Image:       "",
+			Labels:      map[string]string{"dnn": dnn},
+		}
+		dnByDNN[dnn] = dn
+		dnNodes = append(dnNodes, dn)
+	}
+
+	return dnNodes, upfNodeDNNs, dnByDNN
+}
+
 // ─── Topology discovery ───────────────────────────────────────────────────────
 
 func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []string) (*TopologyGraph, error) {
@@ -136,34 +452,15 @@ func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []s
 		}
 	}
 
-	// Add virtual DN node if user-plane NFs exist
-	hasUPF := false
-	for _, n := range nodes {
-		if n.NFType == NFTypeUPF || n.NFType == NFTypeIUPF {
-			hasUPF = true
-			break
-		}
-	}
-	if hasUPF {
-		nodes = append(nodes, TopologyNode{
-			ID:        "dn",
-			PodName:   "data-network",
-			Namespace: "virtual",
-			NFType:    NFTypeDN,
-			NodeName:  "",
-			Status: PodStatus{
-				Phase:     PodPhaseRunning,
-				Ready:     true,
-				Condition: CondRunning,
-			},
-			Interfaces: []NetworkInterface{},
-			Age:        "∞",
-			Image:      "",
-			Labels:     map[string]string{},
-		})
-	}
+	// Number duplicate display names before adding virtual nodes
+	numberDuplicates(nodes)
 
-	edges := buildEdges(nodes)
+	// Detect DNNs from UPF configmaps and build virtual DN nodes
+	cmEntries := getUPFDNNEntries(ctx, cs, namespaces)
+	dnNodes, upfNodeDNNs, dnByDNN := buildDNNodes(nodes, cmEntries)
+	nodes = append(nodes, dnNodes...)
+
+	edges := buildEdges(nodes, upfNodeDNNs, dnByDNN)
 
 	return &TopologyGraph{
 		Nodes:     nodes,
@@ -175,13 +472,22 @@ func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []s
 // ─── Pod → TopologyNode ───────────────────────────────────────────────────────
 
 func podToNode(pod *corev1.Pod) *TopologyNode {
-	// Skip completed/evicted pods
 	if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 		return nil
 	}
 
+	// Skip management-only pods (webui, etc.)
+	if nfVal, ok := pod.Labels["nf"]; ok && strings.ToLower(nfVal) == "webui" {
+		return nil
+	}
+
 	ifaces := parseNetworkStatus(pod.Annotations)
-	nfType := detectNFType(pod, ifaces)
+	nfType, displayName := detectNFType(pod, ifaces)
+
+	if nfType == NFTypeUnknown {
+		return nil
+	}
+
 	status := podStatus(pod)
 	age := time.Since(pod.CreationTimestamp.Time).Round(time.Second).String()
 
@@ -191,31 +497,29 @@ func podToNode(pod *corev1.Pod) *TopologyNode {
 	}
 
 	return &TopologyNode{
-		ID:         string(pod.UID),
-		PodName:    pod.Name,
-		Namespace:  pod.Namespace,
-		NFType:     nfType,
-		NodeName:   pod.Spec.NodeName,
-		Status:     status,
-		Interfaces: ifaces,
-		Age:        age,
-		Image:      img,
-		Labels:     pod.Labels,
+		ID:          string(pod.UID),
+		PodName:     pod.Name,
+		Namespace:   pod.Namespace,
+		NFType:      nfType,
+		DisplayName: displayName,
+		NodeName:    pod.Spec.NodeName,
+		Status:      status,
+		Interfaces:  ifaces,
+		Age:         age,
+		Image:       img,
+		Labels:      pod.Labels,
 	}
 }
 
 func parseNetworkStatus(annotations map[string]string) []NetworkInterface {
 	raw, ok := annotations["k8s.v1.cni.cncf.io/network-status"]
 	if !ok {
-		// fallback: synthesise from pod IP
 		return nil
 	}
-
 	var statuses []netStatus
 	if err := json.Unmarshal([]byte(raw), &statuses); err != nil {
 		return nil
 	}
-
 	ifaces := make([]NetworkInterface, 0, len(statuses))
 	for _, s := range statuses {
 		ifaces = append(ifaces, NetworkInterface{
@@ -244,7 +548,6 @@ func podStatus(pod *corev1.Pod) PodStatus {
 	switch pod.Status.Phase {
 	case corev1.PodRunning:
 		condition = CondRunning
-		// Check for specific conditions
 		for _, cs := range pod.Status.ContainerStatuses {
 			if cs.State.Waiting != nil {
 				switch cs.State.Waiting.Reason {
@@ -280,164 +583,120 @@ func podStatus(pod *corev1.Pod) PodStatus {
 	}
 }
 
-// ─── NF type detection ────────────────────────────────────────────────────────
-
-var nfNameMap = []struct {
-	keywords []string
-	nfType   NFType
-}{
-	{[]string{"nrf"}, NFTypeNRF},
-	{[]string{"ausf"}, NFTypeAUSF},
-	{[]string{"udm"}, NFTypeUDM},
-	{[]string{"udr"}, NFTypeUDR},
-	{[]string{"nssf"}, NFTypeNSSF},
-	{[]string{"chf"}, NFTypeCHF},
-	{[]string{"nef"}, NFTypeNEF},
-	{[]string{"pcf"}, NFTypePCF},
-	{[]string{"amf"}, NFTypeAMF},
-	{[]string{"smf"}, NFTypeSMF},
-	// iUPF before UPF (more specific)
-	{[]string{"iupf", "i-upf"}, NFTypeIUPF},
-	{[]string{"upf", "psa"}, NFTypeUPF},
-	{[]string{"gnb", "gnode", "gnodeb"}, NFTypeGNB},
-	{[]string{"ue", "uesim"}, NFTypeUE},
-}
-
-func detectNFType(pod *corev1.Pod, ifaces []NetworkInterface) NFType {
-	// Check labels first (more reliable)
-	labelKeys := []string{"app", "app.kubernetes.io/name", "nf-type", "nf"}
-	for _, k := range labelKeys {
-		if v, ok := pod.Labels[k]; ok {
-			if t := matchNFName(strings.ToLower(v)); t != NFTypeUnknown {
-				return t
-			}
-		}
-	}
-
-	// Fall back to pod name
-	name := strings.ToLower(pod.Name)
-
-	// iUPF detection by interface combination: has n3 AND n9 (no n6, or n6 as fallback)
-	ifaceNames := make(map[string]bool)
-	for _, iface := range ifaces {
-		ifaceNames[iface.Interface] = true
-	}
-	if strings.Contains(name, "upf") {
-		if ifaceNames["n9"] && ifaceNames["n3"] && !ifaceNames["n6"] {
-			return NFTypeIUPF
-		}
-	}
-
-	return matchNFName(name)
-}
-
-func matchNFName(name string) NFType {
-	for _, entry := range nfNameMap {
-		for _, kw := range entry.keywords {
-			if strings.Contains(name, kw) {
-				return entry.nfType
-			}
-		}
-	}
-	return NFTypeUnknown
-}
-
 // ─── Edge building ────────────────────────────────────────────────────────────
 
-func buildEdges(nodes []TopologyNode) []TopologyEdge {
-	// Index by NF type
+func buildEdges(nodes []TopologyNode, upfNodeDNNs map[string][]string, dnByDNN map[string]TopologyNode) []TopologyEdge {
 	byType := make(map[NFType][]TopologyNode)
 	for _, n := range nodes {
-		byType[n.NFType] = append(byType[n.NFType], n)
+		if n.NFType != NFTypeDN {
+			byType[n.NFType] = append(byType[n.NFType], n)
+		}
 	}
 
 	var edges []TopologyEdge
 
-	short := func(id string) string {
+	// Safe 8-char prefix for edge IDs (avoids panic on short UUIDs or short virtual IDs)
+	idShort := func(id string) string {
 		if len(id) > 8 {
 			return id[:8]
 		}
 		return id
 	}
-	addEdge := func(src, dst TopologyNode, iface string, plane Plane) {
+	addEdge := func(src, dst TopologyNode, iface, label string, plane Plane) {
 		edges = append(edges, TopologyEdge{
-			ID:        fmt.Sprintf("e-%s-%s-%s", short(src.ID), short(dst.ID), iface),
+			ID:        fmt.Sprintf("e-%s-%s-%s", idShort(src.ID), idShort(dst.ID), iface),
 			Source:    src.ID,
 			Target:    dst.ID,
 			Interface: iface,
+			Label:     label,
 			Plane:     plane,
 		})
 	}
 
-	// ── N2: AMF ↔ gNB ────────────────────────────────────────────────────────
-	for _, amf := range byType[NFTypeAMF] {
+	iupfs := byType[NFTypeIUPF]
+	upfs := byType[NFTypeUPF]
+
+	// N1: UE ↔ gNB (NAS-over-RAN)
+	for _, ue := range byType[NFTypeUE] {
 		for _, gnb := range byType[NFTypeGNB] {
-			addEdge(amf, gnb, "n2", PlaneRAN)
+			addEdge(ue, gnb, "n1", "N1", PlaneRAN)
 		}
 	}
 
-	// ── N3: gNB → iUPF (ULCL) or gNB → UPF (single) ────────────────────────
-	iupfs := byType[NFTypeIUPF]
-	upfs  := byType[NFTypeUPF]
+	// N2: gNB ↔ AMF (NGAP)
+	for _, gnb := range byType[NFTypeGNB] {
+		for _, amf := range byType[NFTypeAMF] {
+			addEdge(gnb, amf, "n2", "N2", PlaneRAN)
+		}
+	}
 
+	// N3: gNB → iUPF (ULCL) or gNB → UPF (single)
 	for _, gnb := range byType[NFTypeGNB] {
 		if len(iupfs) > 0 {
-			// ULCL topology: gNB connects to iUPF(s)
 			for _, iupf := range iupfs {
-				addEdge(gnb, iupf, "n3", PlaneUserPlane)
+				addEdge(gnb, iupf, "n3", "N3", PlaneUserPlane)
 			}
 		} else {
-			// Single/branching UPF: gNB connects directly to UPF(s)
 			for _, upf := range upfs {
-				addEdge(gnb, upf, "n3", PlaneUserPlane)
+				addEdge(gnb, upf, "n3", "N3", PlaneUserPlane)
 			}
 		}
 	}
 
-	// ── N4: SMF ↔ all UPFs (PFCP) ────────────────────────────────────────────
+	// N4: SMF ↔ all UPFs (PFCP)
 	for _, smf := range byType[NFTypeSMF] {
 		for _, iupf := range iupfs {
-			addEdge(smf, iupf, "n4", PlanePFCP)
+			addEdge(smf, iupf, "n4", "N4", PlanePFCP)
 		}
 		for _, upf := range upfs {
-			addEdge(smf, upf, "n4", PlanePFCP)
+			addEdge(smf, upf, "n4", "N4", PlanePFCP)
 		}
 	}
 
-	// ── N9: iUPF → PSA-UPFs ──────────────────────────────────────────────────
-	if len(iupfs) > 0 {
-		for _, iupf := range iupfs {
-			for _, upf := range upfs {
-				addEdge(iupf, upf, "n9", PlaneUserPlane)
+	// N9: iUPF → PSA-UPFs (GTP-U tunnel between UPFs)
+	for _, iupf := range iupfs {
+		for _, upf := range upfs {
+			addEdge(iupf, upf, "n9", "N9", PlaneUserPlane)
+		}
+	}
+
+	// N6: PSA-UPF (or single UPF) → DN, one edge per DNN served
+	for _, upf := range upfs {
+		dnns := upfNodeDNNs[upf.ID]
+		for _, dnn := range dnns {
+			if dn, ok := dnByDNN[dnn]; ok {
+				addEdge(upf, dn, "n6", "N6", PlaneUserPlane)
+			}
+		}
+		// Fallback: no DNN mapped → connect to every DN node
+		if len(dnns) == 0 {
+			for _, dn := range dnByDNN {
+				addEdge(upf, dn, "n6", "N6", PlaneUserPlane)
 			}
 		}
 	}
 
-	// ── N6: PSA-UPFs → DN (or single UPF → DN) ──────────────────────────────
-	dnsNodes := byType[NFTypeDN]
-	if len(dnsNodes) > 0 {
-		dn := dnsNodes[0]
-		targetUPFs := upfs
-		if len(iupfs) == 0 {
-			// single UPF topology: UPF connects to DN
-			targetUPFs = upfs
-		}
-		for _, upf := range targetUPFs {
-			addEdge(upf, dn, "n6", PlaneUserPlane)
-		}
+	// SBI: NRF ↔ each CP NF, labelled with the NF's service name
+	sbiLabel := map[NFType]string{
+		NFTypeAMF:  "Namf",
+		NFTypeSMF:  "Nsmf",
+		NFTypeAUSF: "Nausf",
+		NFTypeUDM:  "Nudm",
+		NFTypeUDR:  "Nudr",
+		NFTypePCF:  "Npcf",
+		NFTypeNSSF: "Nnssf",
+		NFTypeCHF:  "Nchf",
+		NFTypeNEF:  "Nnef",
 	}
-
-	// ── SBI: NRF ↔ all CP NFs ────────────────────────────────────────────────
-	sbiTypes := []NFType{NFTypeAMF, NFTypeSMF, NFTypeAUSF, NFTypeUDM, NFTypeUDR,
-		NFTypePCF, NFTypeNSSF, NFTypeCHF, NFTypeNEF}
 	for _, nrf := range byType[NFTypeNRF] {
-		for _, nfType := range sbiTypes {
+		for nfType, lbl := range sbiLabel {
 			for _, nf := range byType[nfType] {
 				edges = append(edges, TopologyEdge{
-					ID:        fmt.Sprintf("e-sbi-%s-%s", nrf.ID[:8], nf.ID[:8]),
+					ID:        fmt.Sprintf("e-sbi-%s-%s", idShort(nrf.ID), idShort(nf.ID)),
 					Source:    nrf.ID,
 					Target:    nf.ID,
 					Interface: "sbi",
+					Label:     lbl,
 					Plane:     PlaneSBI,
 				})
 			}

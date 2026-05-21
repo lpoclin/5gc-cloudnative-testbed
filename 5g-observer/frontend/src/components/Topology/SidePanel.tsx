@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import clsx from 'clsx'
 import { useLogs, type LogLevel } from '@/hooks/useLogs'
 import { IconX, IconChevronDown } from '@/components/common/icons'
-import type { TopologyNode, NFType } from '@/types/topology'
+import type { TopologyNode } from '@/types/topology'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface NfTab {
@@ -94,7 +94,7 @@ function NfLogColumn({
       {/* Column header */}
       <div className="flex items-center gap-1 px-2 py-1.5 bg-bg-secondary border-b border-border shrink-0">
         <span className="text-xs font-mono font-semibold text-blue-400 flex-1 truncate">
-          {node.nfType} <span className="text-slate-500">·</span>{' '}
+          {node.displayName} <span className="text-slate-500">·</span>{' '}
           <span className="text-slate-400 font-normal">{node.podName}</span>
         </span>
         <button
@@ -172,7 +172,7 @@ function PodInfo({ node }: { node: TopologyNode }) {
     <div className="px-4 py-3 space-y-2 shrink-0 border-b border-border">
       <div className="flex items-center justify-between">
         <div>
-          <span className="font-mono text-base font-bold text-blue-400">{node.nfType}</span>
+          <span className="font-mono text-base font-bold text-blue-400">{node.displayName}</span>
           <span className="text-slate-500 text-xs ml-2">{node.podName}</span>
         </div>
         <StatusBadge node={node} />
@@ -301,7 +301,7 @@ export default function SidePanel({ node, allNodes, onClose, onCaptureEdge: _onC
                     : 'border-border text-slate-400',
                 )}
               >
-                {t.node.nfType}
+                {t.node.displayName}
               </span>
             ))}
 
@@ -322,7 +322,7 @@ export default function SidePanel({ node, allNodes, onClose, onCaptureEdge: _onC
                         onClick={() => addNf(n)}
                         className="block w-full text-left px-3 py-1.5 text-xs font-mono text-slate-300 hover:bg-bg-hover"
                       >
-                        <span className="text-blue-400">{n.nfType}</span>{' '}
+                        <span className="text-blue-400">{n.displayName}</span>{' '}
                         <span className="text-slate-500">{n.podName}</span>
                       </button>
                     ))}
