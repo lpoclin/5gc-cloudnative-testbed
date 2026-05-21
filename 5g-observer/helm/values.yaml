@@ -40,8 +40,7 @@ captureAgent:
   image: ghcr.io/lpoclin/5g-observer-capture:latest
   enabled: true
   # Only deploy on nodes with role=userplane
-  nodeSelector:
-    role: userplane
+  nodeSelector: {}
   persistence:
     enabled: false
     storageClass: longhorn

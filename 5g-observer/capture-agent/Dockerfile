@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tshark \
     iproute2 \
     procps \
-    nsenter \
+    util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 # Allow tshark to capture without root (supplementary)
