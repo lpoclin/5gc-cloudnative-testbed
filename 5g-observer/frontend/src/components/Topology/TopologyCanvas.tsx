@@ -1,10 +1,9 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
-import cytoscape, {
-  Core, ElementDefinition, EventObject,
-  NodeSingular, EdgeSingular,
-} from 'cytoscape'
-import { getNFIcon, getNFColor } from '@/components/common/icons'
-import type { TopologyGraph, TopologyNode, TopologyEdge, NFType, Plane } from '@/types/topology'
+import cytoscape, { Core, ElementDefinition, EventObject, NodeSingular, EdgeSingular } from 'cytoscape'
+import { useNavigate } from 'react-router-dom'
+import type { TopologyGraph, TopologyNode, TopologyEdge } from '@/types/topology'
+
+// ─── Props & internal types ────────────────────────────────────────────────────
 
 interface Props {
   graph: TopologyGraph
@@ -12,189 +11,166 @@ interface Props {
   onEdgeClick: (edge: TopologyEdge, sourceNode: TopologyNode) => void
   selectedNodeId?: string | null
   trafficEdgeIds?: Set<string>
+  namespace?: string
 }
 
-// ─── Tooltip state ────────────────────────────────────────────────────────────
-
-interface TooltipState {
-  type: 'node' | 'edge'
-  node?: TopologyNode
-  edge?: TopologyEdge
+interface NodeTip {
+  node: TopologyNode
   pos: { x: number; y: number }
 }
 
-// ─── 3GPP TS 23.501 layout — horizontal left-to-right ─────────────────────────
-// Coordinate space chosen to fit a 1100×960 viewport.
-// SBI bus (top) → Control plane (middle) → RAN+User plane (bottom).
-
-const SBI_ROW1_Y = 60    // NSSF, NEF, NRF, PCF — top SBI row
-const SBI_ROW2_Y = 210   // AUSF, UDM, AMF, SMF, CHF — second SBI row
-const SBI_ROW3_Y = 340   // UDR
-const RAN_Y      = 500   // UE, gNB
-const IUPF_Y     = 500   // iUPF same row as gNB (ULCL mode)
-const PSA_UPF_Y  = 680   // PSA-UPFs (ULCL) or single UPF
-const DN_Y       = 860   // Data networks
-
-// Base X centres per NF type (single instance, multiple are spread ±spacing)
-const BASE_X: Partial<Record<NFType | 'PSA_UPF', number>> = {
-  NSSF:    80,
-  NEF:     260,
-  NRF:     530,
-  PCF:     800,
-  AUSF:    150,
-  UDM:     370,
-  AMF:     530,
-  SMF:     700,
-  CHF:     870,
-  UDR:     370,
-  UE:      100,
-  gNB:     370,
-  iUPF:    660,
-  UPF:     530,   // single-UPF mode centre
-  PSA_UPF: 530,   // PSA-UPFs in ULCL mode
-  DN:      530,
-  UNKNOWN: 1050,
+interface DotTip {
+  node: TopologyNode
+  iface: string
+  pos: { x: number; y: number }
 }
 
-const BASE_Y: Partial<Record<NFType | 'PSA_UPF', number>> = {
-  NSSF: SBI_ROW1_Y, NEF: SBI_ROW1_Y, NRF: SBI_ROW1_Y, PCF: SBI_ROW1_Y,
-  AUSF: SBI_ROW2_Y, UDM: SBI_ROW2_Y, AMF: SBI_ROW2_Y, SMF: SBI_ROW2_Y, CHF: SBI_ROW2_Y,
-  UDR:  SBI_ROW3_Y,
-  UE: RAN_Y, gNB: RAN_Y,
-  iUPF: IUPF_Y,
-  UPF:     PSA_UPF_Y,  // single-UPF mode
-  PSA_UPF: PSA_UPF_Y,  // ULCL PSA-UPFs
-  DN: DN_Y,
-  UNKNOWN: SBI_ROW2_Y,
+interface EndpointDot {
+  x: number; y: number
+  node: TopologyNode
+  iface: string
+  edge: TopologyEdge
+  isActive: boolean
 }
 
-// A UPF node is a PSA-UPF when its display name starts with "PSA-UPF"
-function isPSAUPF(node: TopologyNode): boolean {
-  return node.nfType === 'UPF' && node.displayName.startsWith('PSA-UPF')
+// ─── Colors ────────────────────────────────────────────────────────────────────
+
+const BG          = '#0d1117'
+const NODE_FILL   = '#e6edf3'
+const NODE_BORDER = '#30363d'
+const SIGNAL_CLR  = '#58a6ff'
+const UP_CLR      = '#3fb950'
+const MUTED       = '#8b949e'
+const BADGE_OK    = '#3fb950'
+const BADGE_WARN  = '#d29922'
+const BADGE_ERR   = '#f85149'
+const DOT_IDLE    = '#30363d'
+
+// ─── 3GPP layout ───────────────────────────────────────────────────────────────
+
+const SBI1_Y  = 60
+const SBI2_Y  = 210
+const SBI3_Y  = 340
+const RAN_Y   = 500
+const PSA_Y   = 680
+const DN_Y    = 860
+
+type ET = 'NSSF'|'NEF'|'NRF'|'PCF'|'AUSF'|'UDM'|'AMF'|'SMF'|'CHF'|'UDR'
+        | 'UE'|'gNB'|'iUPF'|'UPF'|'PSA_UPF'|'DN'|'UNKNOWN'
+
+const BASE_X: Partial<Record<ET,number>> = {
+  NSSF:80, NEF:260, NRF:530, PCF:800,
+  AUSF:150, UDM:380, AMF:530, SMF:700, CHF:870, UDR:380,
+  UE:100, gNB:340, iUPF:640, UPF:530, PSA_UPF:530, DN:530, UNKNOWN:1050,
+}
+const BASE_Y: Partial<Record<ET,number>> = {
+  NSSF:SBI1_Y, NEF:SBI1_Y, NRF:SBI1_Y, PCF:SBI1_Y,
+  AUSF:SBI2_Y, UDM:SBI2_Y, AMF:SBI2_Y, SMF:SBI2_Y, CHF:SBI2_Y, UDR:SBI3_Y,
+  UE:RAN_Y, gNB:RAN_Y, iUPF:RAN_Y, UPF:PSA_Y, PSA_UPF:PSA_Y, DN:DN_Y, UNKNOWN:SBI2_Y,
 }
 
-function effectiveType(node: TopologyNode): NFType | 'PSA_UPF' {
-  return isPSAUPF(node) ? 'PSA_UPF' : node.nfType
+function et(n: TopologyNode): ET {
+  if (n.nfType === 'UPF' && n.displayName.startsWith('PSA-UPF')) return 'PSA_UPF'
+  return n.nfType as ET
 }
 
-function computePositions(nodes: TopologyNode[]): Map<string, { x: number; y: number }> {
+function computePositions(
+  nodes: TopologyNode[],
+  saved?: Record<string,{x:number,y:number}>,
+): Map<string,{x:number,y:number}> {
   const isULCL = nodes.some(n => n.nfType === 'iUPF')
-
-  // Group non-DN nodes by effective type
-  const groups = new Map<string, TopologyNode[]>()
-  const dnNodes: TopologyNode[] = []
-
+  const groups = new Map<ET, TopologyNode[]>()
+  const dns: TopologyNode[] = []
   for (const n of nodes) {
-    if (n.nfType === 'DN') {
-      dnNodes.push(n)
-      continue
-    }
-    const k = effectiveType(n)
+    if (n.nfType === 'DN') { dns.push(n); continue }
+    const k = et(n)
     if (!groups.has(k)) groups.set(k, [])
     groups.get(k)!.push(n)
   }
 
-  const positions = new Map<string, { x: number; y: number }>()
+  const pos = new Map<string,{x:number,y:number}>()
+  if (saved) for (const n of nodes) if (saved[n.id]) pos.set(n.id, saved[n.id])
 
   for (const [type, group] of groups) {
-    // In single-UPF mode, UPF sits centre; in ULCL it's PSA_UPF that's spread
-    const bx = BASE_X[type as NFType] ?? 700
-    const by = BASE_Y[type as NFType] ?? 400
-    const total = group.length
-    const spacing = total > 1 ? 170 : 0
-
-    group.forEach((node, i) => {
-      const offset = (i - (total - 1) / 2) * spacing
-      positions.set(node.id, { x: bx + offset, y: isULCL && type === 'UPF' ? PSA_UPF_Y : by })
+    const bx = BASE_X[type] ?? 700
+    const by = BASE_Y[type] ?? 400
+    const sp = group.length > 1 ? 180 : 0
+    group.forEach((n, i) => {
+      if (pos.has(n.id)) return
+      const off = (i - (group.length - 1) / 2) * sp
+      pos.set(n.id, { x: bx + off, y: isULCL && type === 'UPF' ? PSA_Y : by })
     })
   }
+  dns.forEach((n, i) => {
+    if (pos.has(n.id)) return
+    const off = (i - (dns.length - 1) / 2) * 200
+    pos.set(n.id, { x: (BASE_X.DN ?? 530) + off, y: DN_Y })
+  })
+  return pos
+}
 
-  // DN nodes: spread horizontally below UPF positions
-  if (dnNodes.length === 1) {
-    positions.set(dnNodes[0].id, { x: BASE_X['DN'] ?? 530, y: DN_Y })
-  } else {
-    const spacing = 200
-    dnNodes.forEach((dn, i) => {
-      const offset = (i - (dnNodes.length - 1) / 2) * spacing
-      positions.set(dn.id, { x: (BASE_X['DN'] ?? 530) + offset, y: DN_Y })
-    })
+// ─── Edge style by interface ────────────────────────────────────────────────────
+
+function eStyle(iface: string): { lineColor:string; lineStyle:'solid'|'dashed'; width:number; opacity:number } {
+  switch (iface) {
+    case 'n1':  return { lineColor:'#f0f6fc', lineStyle:'solid',  width:0,   opacity:0    }
+    case 'n2':  return { lineColor:SIGNAL_CLR,lineStyle:'solid',  width:2,   opacity:0.85 }
+    case 'n3':  return { lineColor:UP_CLR,    lineStyle:'solid',  width:2,   opacity:0.85 }
+    case 'n4':  return { lineColor:SIGNAL_CLR,lineStyle:'dashed', width:2,   opacity:0.85 }
+    case 'n6':  return { lineColor:UP_CLR,    lineStyle:'solid',  width:2,   opacity:0.85 }
+    case 'n9':  return { lineColor:UP_CLR,    lineStyle:'solid',  width:2,   opacity:0.85 }
+    case 'sbi': return { lineColor:SIGNAL_CLR,lineStyle:'dashed', width:1.5, opacity:0.65 }
+    default:    return { lineColor:NODE_BORDER,lineStyle:'dashed', width:1,   opacity:0.4  }
   }
-
-  return positions
 }
 
-// ─── Edge plane styles ─────────────────────────────────────────────────────────
-
-const PLANE_STYLE: Record<Plane, {
-  lineColor: string
-  lineStyle: 'solid' | 'dashed' | 'dotted'
-  width: number
-  dashPattern?: number[]
-}> = {
-  sbi:        { lineColor: '#3b82f6', lineStyle: 'dashed', width: 1.5, dashPattern: [6, 4] },
-  userplane:  { lineColor: '#22c55e', lineStyle: 'solid',  width: 2.5 },
-  ran:        { lineColor: '#f97316', lineStyle: 'solid',  width: 2   },
-  pfcp:       { lineColor: '#a855f7', lineStyle: 'dashed', width: 1.5, dashPattern: [4, 3] },
-  management: { lineColor: '#6b7280', lineStyle: 'dotted', width: 1   },
+function cni(iface: string): string {
+  if (iface === 'eth0') return 'Cilium / eBPF'
+  if (['n2','n3','n4','n6','n9'].includes(iface)) return 'Multus / ipvlan'
+  if (iface === 'upfgtp') return 'kernel / gtp5g'
+  if (iface === 'uesimtun0') return 'UERANSIM / TUN'
+  return 'unknown'
 }
 
-// ─── Cytoscape stylesheet ──────────────────────────────────────────────────────
+// ─── Cytoscape stylesheet ────────────────────────────────────────────────────────
 
 function buildStylesheet() {
   return [
     {
       selector: 'node',
       style: {
-        'background-color': '#151e35',
-        'background-image': 'data(icon)',
-        'background-fit': 'contain',
-        'background-clip': 'none',
-        'border-color': 'data(borderColor)',
-        'border-width': 2,
+        'background-color': NODE_FILL,
+        'border-color': NODE_BORDER,
+        'border-width': 1.5,
         'label': 'data(label)',
-        'color': '#94a3b8',
-        'font-size': 10,
-        'font-family': 'system-ui, sans-serif',
-        'text-valign': 'bottom',
+        'color': BG,
+        'font-size': 12,
+        'font-weight': 'bold',
+        'font-family': 'Inter, system-ui, sans-serif',
+        'text-valign': 'center',
         'text-halign': 'center',
-        'text-margin-y': 4,
-        'width': 56,
-        'height': 56,
+        'width': 80,
+        'height': 36,
         'shape': 'roundrectangle',
         'overlay-opacity': 0,
       } as cytoscape.Css.Node,
     },
+    { selector: 'node.sm', style: { 'width': 70 } as cytoscape.Css.Node },
     {
       selector: 'node:selected',
-      style: {
-        'border-color': '#60a5fa',
-        'border-width': 3,
-        'background-color': '#1e2d50',
-      } as cytoscape.Css.Node,
+      style: { 'border-color': SIGNAL_CLR, 'border-width': 2.5, 'background-color': '#d4e8ff' } as cytoscape.Css.Node,
     },
     {
       selector: 'node.hover',
-      style: {
-        'border-color': '#e2e8f0',
-        'border-width': 2.5,
-        'background-color': '#1e2d50',
-      } as cytoscape.Css.Node,
+      style: { 'border-color': SIGNAL_CLR, 'border-width': 2 } as cytoscape.Css.Node,
     },
     {
       selector: 'node[status = "CrashLoopBackOff"], node[status = "Error"], node[status = "OOMKilled"]',
-      style: { 'border-color': '#ef4444' } as cytoscape.Css.Node,
+      style: { 'border-color': BADGE_ERR, 'border-width': 2 } as cytoscape.Css.Node,
     },
     {
       selector: 'node[status = "Pending"], node[status = "Unknown"]',
-      style: { 'border-color': '#6b7280' } as cytoscape.Css.Node,
-    },
-    {
-      selector: 'node.dn',
-      style: {
-        'width': 70,
-        'height': 44,
-        'shape': 'ellipse',
-      } as cytoscape.Css.Node,
+      style: { 'border-color': BADGE_WARN } as cytoscape.Css.Node,
     },
     {
       selector: 'edge',
@@ -205,83 +181,50 @@ function buildStylesheet() {
         'line-style': 'data(lineStyle)',
         'line-dash-pattern': 'data(dashPattern)',
         'width': 'data(width)',
-        'opacity': 0.75,
+        'opacity': 'data(opacity)',
         'overlay-opacity': 0,
-        // Edge labels
         'label': 'data(label)',
         'font-size': 9,
-        'color': '#64748b',
+        'color': MUTED,
         'text-rotation': 'autorotate',
-        'text-background-color': '#0a0e1a',
-        'text-background-opacity': 0.85,
+        'text-background-color': BG,
+        'text-background-opacity': 0.9,
         'text-background-padding': '2px',
       } as unknown as cytoscape.Css.Edge,
     },
-    {
-      selector: 'edge:selected',
-      style: {
-        'opacity': 1,
-        'width': 'mapData(width, 0, 4, 3, 6)',
-        'overlay-opacity': 0,
-      } as cytoscape.Css.Edge,
-    },
-    {
-      selector: 'edge.hover',
-      style: { 'opacity': 1, 'color': '#cbd5e1' } as cytoscape.Css.Edge,
-    },
-    {
-      selector: 'edge.traffic',
-      style: {
-        'line-dash-pattern': [8, 4],
-        'line-dash-offset': 0,
-        'opacity': 1,
-      } as cytoscape.Css.Edge,
-    },
-    {
-      selector: '.faded',
-      style: { 'opacity': 0.15 } as cytoscape.Css.Node & cytoscape.Css.Edge,
-    },
+    { selector: 'edge.hover',    style: { 'opacity': 1 } as cytoscape.Css.Edge },
+    { selector: 'edge:selected', style: { 'opacity': 1, 'overlay-opacity': 0 } as cytoscape.Css.Edge },
+    { selector: '.faded',        style: { 'opacity': 0.08 } as cytoscape.Css.Node & cytoscape.Css.Edge },
   ]
 }
 
-// ─── Build Cytoscape elements ──────────────────────────────────────────────────
+// ─── Cytoscape elements ──────────────────────────────────────────────────────────
 
 function buildElements(
   graph: TopologyGraph,
-  positions: Map<string, { x: number; y: number }>,
+  positions: Map<string,{x:number,y:number}>,
 ): ElementDefinition[] {
   const els: ElementDefinition[] = []
 
   for (const node of graph.nodes) {
     const pos = positions.get(node.id) ?? { x: 700, y: 400 }
-    const plane: Plane = (['gNB', 'UE'] as NFType[]).includes(node.nfType)
-      ? 'ran'
-      : (['UPF', 'iUPF'] as NFType[]).includes(node.nfType)
-        ? 'userplane'
-        : node.nfType === 'DN' ? 'management' : 'sbi'
-
-    const pStyle = PLANE_STYLE[plane]
-
+    const sm = node.nfType === 'gNB' || node.nfType === 'UE' || node.nfType === 'DN'
     els.push({
       group: 'nodes',
       data: {
         id: node.id,
         label: node.displayName,
-        icon: getNFIcon(node.nfType),
-        borderColor: getNFColor(node.nfType),
         status: node.status.condition,
         restarts: node.status.restarts,
-        plane,
-        lineColor: pStyle.lineColor,
         _node: node,
       },
-      classes: node.nfType === 'DN' ? 'dn' : '',
+      classes: sm ? 'sm' : undefined,
       position: pos,
     })
   }
 
   for (const edge of graph.edges) {
-    const pStyle = PLANE_STYLE[edge.plane] ?? PLANE_STYLE.management
+    const s = eStyle(edge.interface)
     els.push({
       group: 'edges',
       data: {
@@ -289,98 +232,273 @@ function buildElements(
         source: edge.source,
         target: edge.target,
         label: edge.label || edge.interface.toUpperCase(),
-        lineColor: pStyle.lineColor,
-        lineStyle: pStyle.lineStyle,
-        dashPattern: pStyle.dashPattern ?? [6, 6],
-        width: pStyle.width,
-        plane: edge.plane,
+        lineColor: s.lineColor,
+        lineStyle: s.lineStyle,
+        dashPattern: s.lineStyle === 'dashed' ? [6, 4] : [1, 0],
+        width: s.width,
+        opacity: s.opacity,
+        iface: edge.interface,
         _edge: edge,
       },
     })
   }
-
   return els
 }
 
-// ─── Tooltip helpers ───────────────────────────────────────────────────────────
+// ─── Canvas overlay ──────────────────────────────────────────────────────────────
 
-function conditionColor(cond: string): string {
-  switch (cond) {
-    case 'Running':          return 'text-green-400'
-    case 'CrashLoopBackOff': return 'text-red-400'
-    case 'OOMKilled':        return 'text-red-500'
-    case 'Error':            return 'text-red-400'
-    case 'Pending':          return 'text-yellow-400'
-    default:                 return 'text-slate-400'
+function badgeColor(status: string, restarts: number): string {
+  if (['CrashLoopBackOff','Error','OOMKilled'].includes(status)) return BADGE_ERR
+  if (status === 'Pending' || status === 'Unknown') return BADGE_WARN
+  if (restarts > 3) return BADGE_WARN
+  return BADGE_OK
+}
+
+function drawArcs(
+  ctx: CanvasRenderingContext2D,
+  src: {x:number,y:number}, dst: {x:number,y:number},
+  phase: number, active: boolean,
+) {
+  const angle = Math.atan2(dst.y - src.y, dst.x - src.x)
+  const spread = Math.PI * 0.45
+
+  for (let i = 0; i < 3; i++) {
+    const p = ((phase + i / 3) % 1)
+    const r = 12 + p * 30
+    const a = (1 - p) * (active ? 0.85 : 0.2)
+    ctx.save()
+    ctx.translate(src.x, src.y)
+    ctx.beginPath()
+    ctx.arc(0, 0, r, angle - spread, angle + spread)
+    ctx.strokeStyle = '#f0f6fc'
+    ctx.globalAlpha = a
+    ctx.lineWidth = active ? 1.5 : 1
+    ctx.stroke()
+    ctx.restore()
   }
 }
 
-function NodeTooltip({ node, pos }: { node: TopologyNode; pos: { x: number; y: number } }) {
+function drawEndDot(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, color: string, active: boolean, t: number,
+) {
+  if (active) {
+    const pulse = 0.5 + 0.5 * Math.sin(t * 4)
+    ctx.beginPath()
+    ctx.arc(x, y, 5 + pulse * 4, 0, Math.PI * 2)
+    ctx.strokeStyle = color
+    ctx.globalAlpha = 0.25 * (1 - pulse * 0.5)
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.globalAlpha = 1
+  }
+  ctx.beginPath()
+  ctx.arc(x, y, 5, 0, Math.PI * 2)
+  ctx.fillStyle = color
+  ctx.fill()
+  ctx.strokeStyle = BG
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+}
+
+function runDraw(
+  canvas: HTMLCanvasElement | null,
+  cy: Core | null,
+  t: number,
+  traffic: Set<string>,
+  dotsRef: { current: EndpointDot[] },
+  nodeMap: Map<string, TopologyNode>,
+) {
+  if (!canvas || !cy) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+  const pan  = cy.pan()
+  const zoom = cy.zoom()
+  const toS  = (p: {x:number,y:number}) => ({ x: p.x * zoom + pan.x, y: p.y * zoom + pan.y })
+
+  const dots: EndpointDot[] = []
+
+  // Health badges
+  cy.nodes().forEach(cn => {
+    const p = cn.renderedPosition()
+    const w = cn.renderedWidth()
+    const h = cn.renderedHeight()
+    const color = badgeColor(cn.data('status') as string, (cn.data('restarts') as number) ?? 0)
+    const bx = p.x + w / 2 - 5
+    const by = p.y + h / 2 - 5
+
+    ctx.beginPath()
+    ctx.arc(bx, by, 4, 0, Math.PI * 2)
+    ctx.fillStyle = color
+    ctx.fill()
+    ctx.strokeStyle = BG
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+
+    if (color !== BADGE_OK) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3)
+      ctx.beginPath()
+      ctx.arc(bx, by, 4 + pulse * 3, 0, Math.PI * 2)
+      ctx.strokeStyle = color
+      ctx.globalAlpha = 0.4 * (1 - pulse)
+      ctx.lineWidth = 1
+      ctx.stroke()
+      ctx.globalAlpha = 1
+    }
+  })
+
+  // Wireless arcs N1
+  cy.edges().filter(e => e.data('iface') === 'n1').forEach(e => {
+    const sp = (e.source() as NodeSingular).renderedPosition()
+    const dp = (e.target() as NodeSingular).renderedPosition()
+    const active = traffic.has(e.id())
+    drawArcs(ctx, sp, dp, (t * 0.8) % 1, active)
+    drawArcs(ctx, dp, sp, (t * 0.65 + 0.5) % 1, active)
+  })
+
+  // Traffic moving dots
+  cy.edges().forEach(ce => {
+    if (ce.data('iface') === 'n1') return
+    if (!traffic.has(ce.id())) return
+    const srcEp = toS(ce.sourceEndpoint())
+    const dstEp = toS(ce.targetEndpoint())
+    const lc = ce.data('lineColor') as string
+
+    for (let i = 0; i < 3; i++) {
+      const ph = ((t * 0.55 + i / 3) % 1)
+      const x = srcEp.x + (dstEp.x - srcEp.x) * ph
+      const y = srcEp.y + (dstEp.y - srcEp.y) * ph
+      const alpha = Math.max(0, 1 - Math.abs(ph - 0.5) * 2.5)
+      ctx.beginPath()
+      ctx.arc(x, y, 3, 0, Math.PI * 2)
+      ctx.fillStyle = lc
+      ctx.globalAlpha = alpha
+      ctx.fill()
+    }
+    ctx.globalAlpha = 1
+  })
+
+  // Endpoint dots
+  cy.edges().forEach(ce => {
+    const iface = ce.data('iface') as string
+    if (iface === 'n1' || iface === 'sbi') return
+    const edgeData = ce.data('_edge') as TopologyEdge
+    if (!edgeData) return
+
+    const srcEp  = toS(ce.sourceEndpoint())
+    const dstEp  = toS(ce.targetEndpoint())
+    const lc     = ce.data('lineColor') as string
+    const active = traffic.has(ce.id())
+    const color  = active ? lc : DOT_IDLE
+
+    const srcN = nodeMap.get(edgeData.source)
+    const dstN = nodeMap.get(edgeData.target)
+
+    if (srcN) {
+      drawEndDot(ctx, srcEp.x, srcEp.y, color, active, t)
+      dots.push({ x: srcEp.x, y: srcEp.y, node: srcN, iface, edge: edgeData, isActive: active })
+    }
+    if (dstN) {
+      drawEndDot(ctx, dstEp.x, dstEp.y, color, active, t)
+      dots.push({ x: dstEp.x, y: dstEp.y, node: dstN, iface, edge: edgeData, isActive: active })
+    }
+  })
+
+  dotsRef.current = dots
+}
+
+// ─── Tooltip components ──────────────────────────────────────────────────────────
+
+function condColor(c: string) {
+  if (c === 'Running') return 'text-green-500'
+  if (['CrashLoopBackOff','Error','OOMKilled'].includes(c)) return 'text-red-400'
+  if (c === 'Pending') return 'text-yellow-400'
+  return 'text-slate-400'
+}
+
+function NodeTipBox({ tip }: { tip: NodeTip }) {
+  const n = tip.node
   const style: React.CSSProperties = {
     position: 'absolute',
-    left: pos.x + 14,
-    top: pos.y - 10,
+    left: tip.pos.x + 14,
+    top: Math.max(4, tip.pos.y - 10),
     zIndex: 50,
     pointerEvents: 'none',
-    maxWidth: 260,
+    maxWidth: 280,
+    background: '#161b22',
+    border: `1px solid ${NODE_BORDER}`,
   }
-  // Flip left when too close to right edge
-  if (pos.x > 800) style.left = undefined, style.right = '14px'
-
+  if (tip.pos.x > 800) { style.left = undefined; style.right = 14 }
   return (
-    <div style={style} className="bg-bg-secondary/95 border border-border rounded-lg p-3 shadow-xl text-xs backdrop-blur-sm">
-      <div className="font-semibold text-sm text-text-primary mb-0.5">{node.displayName}</div>
-      <div className="text-slate-400 font-mono mb-1 truncate">{node.podName}</div>
-
+    <div style={style} className="rounded-lg p-3 text-xs shadow-2xl">
       <div className="flex items-center gap-2 mb-1">
-        <span className={conditionColor(node.status.condition)}>{node.status.condition}</span>
-        {node.status.restarts > 0 && (
-          <span className="text-red-400">{node.status.restarts} restart{node.status.restarts > 1 ? 's' : ''}</span>
-        )}
+        <span className="font-bold text-sm" style={{ color: '#e6edf3' }}>{n.displayName}</span>
+        <span className={`font-medium ${condColor(n.status.condition)}`}>● {n.status.condition}</span>
       </div>
+      <div className="font-mono mb-1.5" style={{ color: MUTED }}>Pod: {n.podName}</div>
 
-      {node.interfaces.length > 0 && (
-        <div className="mt-1 space-y-0.5">
-          {node.interfaces.map(iface => (
-            <div key={iface.interface} className="flex gap-1.5">
-              <span className="text-slate-500 shrink-0">{iface.interface || 'eth'}</span>
-              <span className="text-slate-300 font-mono truncate">{iface.ips.join(', ')}</span>
+      {n.interfaces.length > 0 && (
+        <div className="space-y-0.5 mb-1.5">
+          {n.interfaces.map(iface => (
+            <div key={iface.interface} className="flex gap-2">
+              <span className="w-20 shrink-0 font-mono" style={{ color: SIGNAL_CLR }}>
+                {iface.interface}:
+              </span>
+              <span className="font-mono" style={{ color: '#e6edf3' }}>
+                {iface.ips.join(', ')}
+              </span>
             </div>
           ))}
         </div>
       )}
 
-      <div className="mt-1.5 pt-1.5 border-t border-border/50 flex flex-col gap-0.5 text-slate-500">
-        {node.nodeName && <span>node: {node.nodeName}</span>}
-        <span>age: {node.age}</span>
+      <div className="flex gap-4 pt-1.5" style={{ borderTop: `1px solid ${NODE_BORDER}`, color: MUTED }}>
+        {n.status.restarts > 0 && (
+          <span style={{ color: BADGE_WARN }}>↺ {n.status.restarts} restarts</span>
+        )}
+        <span>Age: {n.age}</span>
+        {n.nodeName && <span>Node: {n.nodeName}</span>}
       </div>
+      <div className="mt-1.5" style={{ color: MUTED }}>[Click for logs &amp; metrics]</div>
     </div>
   )
 }
 
-function EdgeTooltip({ edge, pos }: { edge: TopologyEdge; pos: { x: number; y: number } }) {
+function DotTipBox({ tip, onCapture }: { tip: DotTip; onCapture: () => void }) {
   const style: React.CSSProperties = {
     position: 'absolute',
-    left: pos.x + 14,
-    top: pos.y - 10,
+    left: tip.pos.x + 14,
+    top: Math.max(4, tip.pos.y - 10),
     zIndex: 50,
-    pointerEvents: 'none',
-    maxWidth: 220,
+    maxWidth: 260,
+    background: '#161b22',
+    border: `1px solid ${NODE_BORDER}`,
+    pointerEvents: 'auto',
   }
-  if (pos.x > 800) style.left = undefined, style.right = '14px'
-
+  if (tip.pos.x > 800) { style.left = undefined; style.right = 14 }
   return (
-    <div style={style} className="bg-bg-secondary/95 border border-border rounded-lg p-3 shadow-xl text-xs backdrop-blur-sm">
-      <div className="font-semibold text-sm text-text-primary mb-0.5">{edge.label || edge.interface.toUpperCase()}</div>
-      <div className="text-slate-400 capitalize mb-1">{edge.plane} plane</div>
-      {edge.srcIP && (
-        <div className="font-mono text-slate-300">{edge.srcIP} → {edge.dstIP}</div>
-      )}
+    <div style={style} className="rounded-lg p-3 text-xs shadow-2xl">
+      <div className="font-bold mb-0.5" style={{ color: '#e6edf3' }}>
+        {tip.node.displayName} : {tip.iface}
+      </div>
+      <div className="font-mono mb-1.5" style={{ color: MUTED }}>
+        {tip.node.interfaces.find(i => i.interface === tip.iface)?.ips[0] ?? ''}
+      </div>
+      <div className="mb-1" style={{ color: MUTED }}>CNI: {cni(tip.iface)}</div>
+      <button
+        onClick={onCapture}
+        className="mt-1 w-full text-center rounded py-1 text-xs font-medium"
+        style={{ background: '#1f6feb', color: '#e6edf3', pointerEvents: 'auto' }}
+      >
+        ▶ Live Capture
+      </button>
     </div>
   )
 }
 
-// ─── Main component ────────────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────────
 
 export default function TopologyCanvas({
   graph,
@@ -388,18 +506,72 @@ export default function TopologyCanvas({
   onEdgeClick,
   selectedNodeId,
   trafficEdgeIds,
+  namespace = 'free5gc',
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const overlayRef   = useRef<HTMLCanvasElement>(null)
   const cyRef        = useRef<Core | null>(null)
-  const animFrameRef = useRef<number | undefined>(undefined)
+  const dotsRef      = useRef<EndpointDot[]>([])
   const mousePos     = useRef({ x: 0, y: 0 })
-  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const nodeTipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const dotTipTimer  = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const trafficRef   = useRef(trafficEdgeIds ?? new Set<string>())
 
-  const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  const [nodeTip, setNodeTip] = useState<NodeTip | null>(null)
+  const [dotTip,  setDotTip]  = useState<DotTip | null>(null)
 
-  const positions = useMemo(() => computePositions(graph.nodes), [graph.nodes])
+  const navigate = useNavigate()
 
-  // ── Init Cytoscape ─────────────────────────────────────────────────────────
+  const storageKey = `5g-observer-positions-${namespace}`
+
+  // Keep trafficRef current without restarting RAF
+  useEffect(() => { trafficRef.current = trafficEdgeIds ?? new Set() }, [trafficEdgeIds])
+
+  const nodeMap = useMemo(() => {
+    const m = new Map<string, TopologyNode>()
+    for (const n of graph.nodes) m.set(n.id, n)
+    return m
+  }, [graph.nodes])
+
+  // Load saved positions
+  const savedPositions = useMemo<Record<string,{x:number,y:number}> | undefined>(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? 'null') ?? undefined }
+    catch { return undefined }
+  }, [storageKey])
+
+  const positions = useMemo(
+    () => computePositions(graph.nodes, savedPositions),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [graph.nodes],
+  )
+
+  // ── Resize canvas overlay to match container ─────────────────────────────
+  useEffect(() => {
+    const canvas = overlayRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+    const ro = new ResizeObserver(() => {
+      canvas.width  = container.clientWidth
+      canvas.height = container.clientHeight
+    })
+    ro.observe(container)
+    canvas.width  = container.clientWidth
+    canvas.height = container.clientHeight
+    return () => ro.disconnect()
+  }, [])
+
+  // ── Continuous RAF animation loop ────────────────────────────────────────
+  useEffect(() => {
+    let raf: number
+    const loop = (time: number) => {
+      runDraw(overlayRef.current, cyRef.current, time / 1000, trafficRef.current, dotsRef, nodeMap)
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [nodeMap])
+
+  // ── Init Cytoscape ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return
 
@@ -408,8 +580,8 @@ export default function TopologyCanvas({
       elements: buildElements(graph, positions),
       style: buildStylesheet(),
       layout: { name: 'preset' },
-      minZoom: 0.3,
-      maxZoom: 3,
+      minZoom: 0.25,
+      maxZoom: 4,
       wheelSensitivity: 0.3,
       boxSelectionEnabled: false,
       selectionType: 'single',
@@ -418,16 +590,51 @@ export default function TopologyCanvas({
     cyRef.current = cy
     cy.fit(cy.nodes(), 60)
 
-    // Track raw mouse position inside the container
-    const onMouseMove = (e: MouseEvent) => {
-      const rect = containerRef.current?.getBoundingClientRect()
-      if (rect) {
-        mousePos.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    // Track mouse position relative to container
+    const onMove = (e: MouseEvent) => {
+      const r = containerRef.current?.getBoundingClientRect()
+      if (r) mousePos.current = { x: e.clientX - r.left, y: e.clientY - r.top }
+
+      // Dot hover detection
+      const mx = mousePos.current.x
+      const my = mousePos.current.y
+      let hit: EndpointDot | null = null
+      for (const d of dotsRef.current) {
+        const dx = mx - d.x, dy = my - d.y
+        if (Math.sqrt(dx*dx + dy*dy) < 9) { hit = d; break }
+      }
+      if (hit) {
+        clearTimeout(dotTipTimer.current)
+        const snap = { ...mousePos.current }
+        const h = hit
+        dotTipTimer.current = setTimeout(() => {
+          setDotTip({ node: h.node, iface: h.iface, pos: snap })
+          setNodeTip(null)
+        }, 200)
+      } else {
+        clearTimeout(dotTipTimer.current)
+        setDotTip(null)
       }
     }
-    containerRef.current.addEventListener('mousemove', onMouseMove)
 
-    // ── Node interactions ──────────────────────────────────────────────────
+    const onClick = (e: MouseEvent) => {
+      const r = containerRef.current?.getBoundingClientRect()
+      if (!r) return
+      const mx = e.clientX - r.left
+      const my = e.clientY - r.top
+      for (const d of dotsRef.current) {
+        const dx = mx - d.x, dy = my - d.y
+        if (Math.sqrt(dx*dx + dy*dy) < 9) {
+          navigate(`/captures?pod=${d.node.podName}&interface=${d.iface}`)
+          return
+        }
+      }
+    }
+
+    containerRef.current.addEventListener('mousemove', onMove)
+    containerRef.current.addEventListener('click', onClick)
+
+    // Node events
     cy.on('tap', 'node', (e: EventObject) => {
       const raw = (e.target as NodeSingular).data('_node') as TopologyNode
       if (raw) onNodeClick(raw)
@@ -435,77 +642,69 @@ export default function TopologyCanvas({
 
     cy.on('mouseover', 'node', (e: EventObject) => {
       ;(e.target as NodeSingular).addClass('hover')
-      clearTimeout(tooltipTimer.current)
+      clearTimeout(nodeTipTimer.current)
       const raw = (e.target as NodeSingular).data('_node') as TopologyNode
       if (!raw) return
       const snap = { ...mousePos.current }
-      tooltipTimer.current = setTimeout(() => {
-        setTooltip({ type: 'node', node: raw, pos: snap })
-      }, 200)
+      nodeTipTimer.current = setTimeout(() => setNodeTip({ node: raw, pos: snap }), 200)
     })
 
     cy.on('mouseout', 'node', (e: EventObject) => {
       ;(e.target as NodeSingular).removeClass('hover')
-      clearTimeout(tooltipTimer.current)
-      setTooltip(null)
+      clearTimeout(nodeTipTimer.current)
+      setNodeTip(null)
     })
 
-    // ── Edge interactions ──────────────────────────────────────────────────
     cy.on('tap', 'edge', (e: EventObject) => {
-      const rawEdge = (e.target as EdgeSingular).data('_edge') as TopologyEdge
-      const sourceNode = graph.nodes.find(n => n.id === (e.target as EdgeSingular).data('source'))
-      if (rawEdge && sourceNode) onEdgeClick(rawEdge, sourceNode)
+      const raw = (e.target as EdgeSingular).data('_edge') as TopologyEdge
+      const src = graph.nodes.find(n => n.id === (e.target as EdgeSingular).data('source'))
+      if (raw && src) onEdgeClick(raw, src)
     })
 
     cy.on('mouseover', 'edge', (e: EventObject) => {
       ;(e.target as EdgeSingular).addClass('hover')
-      clearTimeout(tooltipTimer.current)
-      const raw = (e.target as EdgeSingular).data('_edge') as TopologyEdge
-      if (!raw) return
-      const snap = { ...mousePos.current }
-      tooltipTimer.current = setTimeout(() => {
-        setTooltip({ type: 'edge', edge: raw, pos: snap })
-      }, 200)
     })
-
     cy.on('mouseout', 'edge', (e: EventObject) => {
       ;(e.target as EdgeSingular).removeClass('hover')
-      clearTimeout(tooltipTimer.current)
-      setTooltip(null)
     })
 
-    // ── Background tap: deselect ───────────────────────────────────────────
     cy.on('tap', (e: EventObject) => {
-      if (e.target === cy) cy.elements().unselect()
+      if (e.target === cy) { cy.elements().unselect(); setNodeTip(null) }
+    })
+
+    // Save positions on node drag end
+    cy.on('dragfree', 'node', () => {
+      const saved: Record<string,{x:number,y:number}> = {}
+      cy.nodes().forEach(n => { saved[n.id()] = n.position() })
+      try { localStorage.setItem(storageKey, JSON.stringify(saved)) } catch { /* quota */ }
     })
 
     return () => {
-      clearTimeout(tooltipTimer.current)
-      cancelAnimationFrame(animFrameRef.current ?? 0)
-      containerRef.current?.removeEventListener('mousemove', onMouseMove)
+      clearTimeout(nodeTipTimer.current)
+      clearTimeout(dotTipTimer.current)
+      containerRef.current?.removeEventListener('mousemove', onMove)
+      containerRef.current?.removeEventListener('click', onClick)
       cy.destroy()
       cyRef.current = null
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Update elements when graph changes ────────────────────────────────────
+  // ── Update elements without destroying cy ────────────────────────────────
   useEffect(() => {
     const cy = cyRef.current
     if (!cy) return
-
-    const newPositions = computePositions(graph.nodes)
-    const elements = buildElements(graph, newPositions)
+    const newPos = computePositions(graph.nodes)
+    const elements = buildElements(graph, newPos)
 
     cy.batch(() => {
       const newIds = new Set(elements.map(e => e.data.id as string))
       cy.elements().forEach(el => { if (!newIds.has(el.id())) el.remove() })
-
       for (const el of elements) {
-        const existing = cy.getElementById(el.data.id as string)
-        if (existing.length > 0) {
-          existing.data(el.data)
-          if (el.group === 'nodes' && el.position) existing.position(el.position)
+        const ex = cy.getElementById(el.data.id as string)
+        if (ex.length > 0) {
+          ex.data(el.data)
+          if (el.group === 'nodes' && el.position && !ex.grabbed()) ex.position(el.position)
         } else {
           cy.add(el)
         }
@@ -513,7 +712,7 @@ export default function TopologyCanvas({
     })
   }, [graph])
 
-  // ── Selected node highlight ───────────────────────────────────────────────
+  // ── Selected highlight ───────────────────────────────────────────────────
   useEffect(() => {
     const cy = cyRef.current
     if (!cy) return
@@ -521,88 +720,102 @@ export default function TopologyCanvas({
     if (selectedNodeId) cy.getElementById(selectedNodeId).select()
   }, [selectedNodeId])
 
-  // ── Traffic animation ─────────────────────────────────────────────────────
-  useEffect(() => {
+  // ── Reset layout ─────────────────────────────────────────────────────────
+  const handleReset = useCallback(() => {
+    try { localStorage.removeItem(storageKey) } catch { /* ok */ }
     const cy = cyRef.current
     if (!cy) return
+    const newPos = computePositions(graph.nodes)
+    cy.batch(() => {
+      cy.nodes().forEach(n => {
+        const p = newPos.get(n.id())
+        if (p) n.animate({ position: p } as Parameters<typeof n.animate>[0], { duration: 300 })
+      })
+    })
+  }, [graph.nodes, storageKey])
 
-    cy.edges().removeClass('traffic')
-    trafficEdgeIds?.forEach(id => cy.getElementById(id).addClass('traffic'))
-
-    let offset = 0
-    const animate = () => {
-      offset = (offset - 1.5) % 100
-      cy.edges('.traffic').style('line-dash-offset', offset)
-      animFrameRef.current = requestAnimationFrame(animate)
-    }
-
-    if (trafficEdgeIds && trafficEdgeIds.size > 0) {
-      animFrameRef.current = requestAnimationFrame(animate)
-    }
-
-    return () => cancelAnimationFrame(animFrameRef.current ?? 0)
-  }, [trafficEdgeIds])
-
-  // ── Fit button ────────────────────────────────────────────────────────────
-  const handleFit = useCallback(() => {
-    cyRef.current?.fit(undefined, 60)
-  }, [])
+  const handleFit = useCallback(() => { cyRef.current?.fit(undefined, 60) }, [])
 
   const isULCL = graph.nodes.some(n => n.nfType === 'iUPF')
 
+  const handleCapture = useCallback((dot: DotTip) => {
+    navigate(`/captures?pod=${dot.node.podName}&interface=${dot.iface}`)
+  }, [navigate])
+
   return (
-    <div className="relative w-full h-full bg-bg-primary">
-      {/* Cytoscape canvas */}
-      <div
-        ref={containerRef}
-        className="w-full h-full"
-        style={{ background: '#0a0e1a' }}
+    <div className="relative w-full h-full" style={{ background: BG }}>
+      {/* Cytoscape container */}
+      <div ref={containerRef} className="w-full h-full" style={{ background: BG }} />
+
+      {/* Canvas overlay — health badges, arcs, traffic dots, endpoint dots */}
+      <canvas
+        ref={overlayRef}
+        className="absolute inset-0"
+        style={{ pointerEvents: 'none', zIndex: 10 }}
       />
 
-      {/* Hover tooltips */}
-      {tooltip?.type === 'node' && tooltip.node && (
-        <NodeTooltip node={tooltip.node} pos={tooltip.pos} />
-      )}
-      {tooltip?.type === 'edge' && tooltip.edge && (
-        <EdgeTooltip edge={tooltip.edge} pos={tooltip.pos} />
-      )}
+      {/* Node hover tooltip */}
+      {nodeTip && !dotTip && <NodeTipBox tip={nodeTip} />}
 
-      {/* Topology mode badge */}
-      <div className="absolute top-3 left-3 flex items-center gap-2">
-        <span className="text-xs text-slate-500 font-mono">
+      {/* Dot hover tooltip */}
+      {dotTip && <DotTipBox tip={dotTip} onCapture={() => handleCapture(dotTip)} />}
+
+      {/* Header info */}
+      <div className="absolute top-3 left-3 flex items-center gap-2" style={{ zIndex: 20 }}>
+        <span className="text-xs font-mono" style={{ color: MUTED }}>
           {graph.nodes.length} NFs · {graph.edges.length} links
         </span>
         {isULCL && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/40 text-green-400 border border-green-800/50">
+          <span className="text-xs px-1.5 py-0.5 rounded font-medium"
+            style={{ background: '#1f4d2e', color: UP_CLR, border: `1px solid #2d6a3f` }}>
             ULCL
           </span>
         )}
       </div>
 
-      {/* Plane legend */}
-      <div className="absolute bottom-4 left-4 flex flex-col gap-1.5 bg-bg-secondary/80 border border-border rounded-lg p-2.5 backdrop-blur-sm">
-        <span className="text-xs text-slate-500 font-medium mb-0.5">Interfaces</span>
+      {/* Controls */}
+      <div className="absolute top-3 right-3 flex items-center gap-1.5" style={{ zIndex: 20 }}>
+        <button
+          onClick={handleReset}
+          className="text-xs px-2 py-1 rounded border font-mono"
+          style={{ background: '#161b22', border: `1px solid ${NODE_BORDER}`, color: MUTED }}
+          title="Reset layout to default positions"
+        >
+          ⊟ Reset
+        </button>
+        <button
+          onClick={handleFit}
+          className="text-xs px-2 py-1 rounded border font-mono"
+          style={{ background: '#161b22', border: `1px solid ${NODE_BORDER}`, color: MUTED }}
+          title="Fit all nodes in view"
+        >
+          ⊞ Fit
+        </button>
+      </div>
+
+      {/* Legend */}
+      <div
+        className="absolute bottom-4 left-4 rounded-lg p-2.5 text-xs"
+        style={{ background: '#161b22', border: `1px solid ${NODE_BORDER}`, zIndex: 20 }}
+      >
+        <div className="mb-1 font-medium" style={{ color: MUTED }}>Interfaces</div>
         {([
-          ['sbi',       '#3b82f6', 'SBI (HTTP/2)'],
-          ['userplane', '#22c55e', 'User plane (GTP-U)'],
-          ['ran',       '#f97316', 'RAN (NGAP / NAS)'],
-          ['pfcp',      '#a855f7', 'PFCP (N4)'],
-        ] as const).map(([, color, name]) => (
-          <div key={name} className="flex items-center gap-2 text-xs text-slate-400">
-            <div className="w-5 h-0.5 rounded" style={{ background: color }} />
-            {name}
+          [SIGNAL_CLR, 'Signaling (N2, SBI)', false],
+          [SIGNAL_CLR, 'PFCP / N4', true],
+          [UP_CLR,     'User plane (N3, N6, N9)', false],
+          ['#f0f6fc',  'Wireless N1 (arcs)', false],
+        ] as [string,string,boolean][]).map(([color, label, dashed]) => (
+          <div key={label} className="flex items-center gap-2 mb-0.5">
+            <svg width="20" height="8">
+              {dashed
+                ? <line x1="0" y1="4" x2="20" y2="4" stroke={color} strokeWidth="2" strokeDasharray="4 3"/>
+                : <line x1="0" y1="4" x2="20" y2="4" stroke={color} strokeWidth="2"/>
+              }
+            </svg>
+            <span style={{ color: MUTED }}>{label}</span>
           </div>
         ))}
       </div>
-
-      {/* Fit button */}
-      <button
-        onClick={handleFit}
-        title="Fit to view"
-        className="absolute top-3 right-3 btn-secondary text-xs px-2 py-1"
-      >
-        ⊞ Fit
-      </button>
     </div>
   )
 }
