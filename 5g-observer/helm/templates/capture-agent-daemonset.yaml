@@ -1,0 +1,74 @@
+{{- if .Values.captureAgent.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: 5g-observer-capture
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: 5g-observer-capture
+    app.kubernetes.io/name: 5g-observer
+    app.kubernetes.io/component: capture-agent
+spec:
+  selector:
+    matchLabels:
+      app: 5g-observer-capture
+  template:
+    metadata:
+      labels:
+        app: 5g-observer-capture
+        app.kubernetes.io/name: 5g-observer
+    spec:
+      serviceAccountName: 5g-observer
+      hostPID: true
+      nodeSelector:
+        {{- toYaml .Values.captureAgent.nodeSelector | nindent 8 }}
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: capture-agent
+          image: {{ .Values.captureAgent.image }}
+          imagePullPolicy: Always
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - NET_RAW
+                - NET_ADMIN
+                - SYS_PTRACE
+          env:
+            - name: API_SERVER_ADDR
+              value: "5g-observer-api:9999"
+            - name: TARGET_NAMESPACES
+              value: {{ .Values.targets | map (index . "namespace") | join "," | quote }}
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: proc
+              mountPath: /proc
+              readOnly: true
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+            {{- if .Values.captureAgent.persistence.enabled }}
+            - name: pcap-storage
+              mountPath: /pcap
+            {{- end }}
+          resources:
+            {{- toYaml .Values.captureAgent.resources | nindent 12 }}
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        {{- if .Values.captureAgent.persistence.enabled }}
+        - name: pcap-storage
+          persistentVolumeClaim:
+            claimName: 5g-observer-pcap
+        {{- end }}
+{{- end }}

@@ -1,0 +1,22 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: 5g-observer
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: 5g-observer
+  annotations:
+    # Cilium LoadBalancer IP pool annotation
+    cilium.io/ipam-pool: "default"
+spec:
+  gatewayClassName: {{ .Values.gateway.gatewayClassName }}
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+  addresses:
+    - type: IPAddress
+      value: {{ .Values.gateway.ip | quote }}

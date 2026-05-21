@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 5g-observer-api
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: 5g-observer-api
+    app.kubernetes.io/name: 5g-observer
+    app.kubernetes.io/component: api-server
+spec:
+  replicas: {{ .Values.apiServer.replicas }}
+  selector:
+    matchLabels:
+      app: 5g-observer-api
+  template:
+    metadata:
+      labels:
+        app: 5g-observer-api
+        app.kubernetes.io/name: 5g-observer
+    spec:
+      serviceAccountName: 5g-observer
+      {{- if .Values.apiServer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.apiServer.nodeSelector | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: api-server
+          image: {{ .Values.apiServer.image }}
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: grpc
+              containerPort: 9999
+              protocol: TCP
+          env:
+            - name: GIN_MODE
+              value: release
+            - name: LOKI_URL
+              value: {{ .Values.loki.url | quote }}
+            - name: PROMETHEUS_URL
+              value: {{ .Values.prometheus.url | quote }}
+            - name: HUBBLE_ADDRESS
+              value: {{ .Values.hubble.address | quote }}
+            - name: TARGET_NAMESPACES
+              value: {{ .Values.targets | map (index . "namespace") | join "," | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.apiServer.resources | nindent 12 }}

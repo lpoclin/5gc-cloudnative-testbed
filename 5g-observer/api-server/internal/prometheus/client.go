@@ -1,0 +1,277 @@
+package prometheus
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"net/url"
+	"strconv"
+	"time"
+)
+
+type Client struct {
+	base string
+	http *http.Client
+}
+
+func NewClient(baseURL string) *Client {
+	return &Client{
+		base: baseURL,
+		http: &http.Client{Timeout: 15 * time.Second},
+	}
+}
+
+// ─── Response types ────────────────────────────────────────────────────────────
+
+type promResponse struct {
+	Status string `json:"status"`
+	Data   struct {
+		ResultType string        `json:"resultType"`
+		Result     []promResult  `json:"result"`
+	} `json:"data"`
+}
+
+type promResult struct {
+	Metric map[string]string `json:"metric"`
+	Value  []interface{}     `json:"value"`  // [timestamp, value string]
+	Values [][]interface{}   `json:"values"` // [[timestamp, value], ...]
+}
+
+// ─── Cluster metrics ──────────────────────────────────────────────────────────
+
+type ClusterMetrics struct {
+	CPUPercent    float64 `json:"cpuPercent"`
+	MemoryPercent float64 `json:"memoryPercent"`
+	PodsRunning   int     `json:"podsRunning"`
+	PodsTotal     int     `json:"podsTotal"`
+	NodesReady    int     `json:"nodesReady"`
+	NodesTotal    int     `json:"nodesTotal"`
+	PVCsTotal     int     `json:"pvcsTotal"`
+	PVCsBound     int     `json:"pvcsBound"`
+}
+
+func (c *Client) ClusterMetrics(ctx context.Context) (*ClusterMetrics, error) {
+	cpuPct,    _ := c.queryScalar(ctx, `100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`)
+	memPct,    _ := c.queryScalar(ctx, `100 * (1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes))`)
+	podsRun,   _ := c.queryScalar(ctx, `sum(kube_pod_status_phase{phase="Running"})`)
+	podsTot,   _ := c.queryScalar(ctx, `count(kube_pod_info)`)
+	nodesRdy,  _ := c.queryScalar(ctx, `sum(kube_node_status_condition{condition="Ready",status="true"})`)
+	nodesTot,  _ := c.queryScalar(ctx, `count(kube_node_info)`)
+	pvcsBound, _ := c.queryScalar(ctx, `sum(kube_persistentvolumeclaim_status_phase{phase="Bound"})`)
+	pvcsTot,   _ := c.queryScalar(ctx, `count(kube_persistentvolumeclaim_info)`)
+
+	return &ClusterMetrics{
+		CPUPercent:    round1(cpuPct),
+		MemoryPercent: round1(memPct),
+		PodsRunning:   int(podsRun),
+		PodsTotal:     int(podsTot),
+		NodesReady:    int(nodesRdy),
+		NodesTotal:    int(nodesTot),
+		PVCsBound:     int(pvcsBound),
+		PVCsTotal:     int(pvcsTot),
+	}, nil
+}
+
+// ─── Time-series ──────────────────────────────────────────────────────────────
+
+type TimePoint struct {
+	Timestamp int64   `json:"timestamp"`
+	Value     float64 `json:"value"`
+}
+
+type TimeSeries struct {
+	CPUPercent    []TimePoint `json:"cpuPercent"`
+	MemoryPercent []TimePoint `json:"memoryPercent"`
+}
+
+func (c *Client) TimeSeries(ctx context.Context, rangeStr string) (*TimeSeries, error) {
+	step := "60s"
+	dur := "1h"
+	switch rangeStr {
+	case "6h":
+		dur = "6h"
+		step = "300s"
+	case "24h":
+		dur = "24h"
+		step = "900s"
+	}
+
+	cpuQ := `100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`
+	memQ := `100 * (1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes))`
+
+	cpuPts, _ := c.queryRange(ctx, cpuQ, dur, step)
+	memPts, _ := c.queryRange(ctx, memQ, dur, step)
+
+	return &TimeSeries{CPUPercent: cpuPts, MemoryPercent: memPts}, nil
+}
+
+// ─── Pod metrics ──────────────────────────────────────────────────────────────
+
+func (c *Client) PodMetrics(ctx context.Context, namespace, pod string) (map[string]interface{}, error) {
+	cpuQ := fmt.Sprintf(`sum(rate(container_cpu_usage_seconds_total{namespace="%s",pod="%s",container!=""}[5m])) * 100`, namespace, pod)
+	memQ := fmt.Sprintf(`sum(container_memory_working_set_bytes{namespace="%s",pod="%s",container!=""}) / 1048576`, namespace, pod)
+
+	cpu, _ := c.queryScalar(ctx, cpuQ)
+	mem, _ := c.queryScalar(ctx, memQ)
+
+	return map[string]interface{}{
+		"cpuPercent": round1(cpu),
+		"memoryMi":   int(mem),
+	}, nil
+}
+
+// ─── Node metrics ──────────────────────────────────────────────────────────────
+
+type NodeMetric struct {
+	CPUPercent  float64
+	MemPercent  float64
+	DiskPercent float64
+}
+
+func (c *Client) NodeMetrics(ctx context.Context) (map[string]NodeMetric, error) {
+	cpuQ  := `100 - (rate(node_cpu_seconds_total{mode="idle"}[5m]) * 100)`
+	memQ  := `100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)`
+	diskQ := `100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})`
+
+	result := make(map[string]NodeMetric)
+
+	addMetric := func(q string, setter func(*NodeMetric, float64)) {
+		resp, err := c.queryRaw(ctx, q)
+		if err != nil {
+			return
+		}
+		for _, r := range resp.Data.Result {
+			node, ok := r.Metric["instance"]
+			if !ok {
+				node = r.Metric["node"]
+			}
+			if node == "" {
+				continue
+			}
+			val := parseValue(r.Value)
+			m := result[node]
+			setter(&m, val)
+			result[node] = m
+		}
+	}
+
+	addMetric(cpuQ,  func(m *NodeMetric, v float64) { m.CPUPercent = round1(v) })
+	addMetric(memQ,  func(m *NodeMetric, v float64) { m.MemPercent = round1(v) })
+	addMetric(diskQ, func(m *NodeMetric, v float64) { m.DiskPercent = round1(v) })
+
+	return result, nil
+}
+
+// ─── Internal query helpers ───────────────────────────────────────────────────
+
+func (c *Client) queryScalar(ctx context.Context, query string) (float64, error) {
+	resp, err := c.queryRaw(ctx, query)
+	if err != nil || len(resp.Data.Result) == 0 {
+		return 0, err
+	}
+	return parseValue(resp.Data.Result[0].Value), nil
+}
+
+func (c *Client) queryRange(ctx context.Context, query, dur, step string) ([]TimePoint, error) {
+	now := time.Now()
+	startTime, _ := parseDuration(dur)
+	start := now.Add(-startTime)
+
+	params := url.Values{}
+	params.Set("query", query)
+	params.Set("start", fmt.Sprintf("%d", start.Unix()))
+	params.Set("end",   fmt.Sprintf("%d", now.Unix()))
+	params.Set("step",  step)
+
+	reqURL := fmt.Sprintf("%s/api/v1/query_range?%s", c.base, params.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result promResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	if len(result.Data.Result) == 0 {
+		return []TimePoint{}, nil
+	}
+
+	pts := make([]TimePoint, 0)
+	for _, v := range result.Data.Result[0].Values {
+		if len(v) < 2 {
+			continue
+		}
+		ts, _ := v[0].(float64)
+		valStr, _ := v[1].(string)
+		val, _ := strconv.ParseFloat(valStr, 64)
+		pts = append(pts, TimePoint{
+			Timestamp: int64(ts) * 1000, // ms
+			Value:     round1(val),
+		})
+	}
+	return pts, nil
+}
+
+func (c *Client) queryRaw(ctx context.Context, query string) (*promResponse, error) {
+	params := url.Values{}
+	params.Set("query", query)
+
+	reqURL := fmt.Sprintf("%s/api/v1/query?%s", c.base, params.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("prometheus request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("prometheus %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result promResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func parseValue(v []interface{}) float64 {
+	if len(v) < 2 {
+		return 0
+	}
+	s, _ := v[1].(string)
+	val, _ := strconv.ParseFloat(s, 64)
+	return val
+}
+
+func round1(v float64) float64 {
+	return math.Round(v*10) / 10
+}
+
+func parseDuration(s string) (time.Duration, error) {
+	switch s {
+	case "1h":
+		return time.Hour, nil
+	case "6h":
+		return 6 * time.Hour, nil
+	case "24h":
+		return 24 * time.Hour, nil
+	}
+	return time.Hour, nil
+}

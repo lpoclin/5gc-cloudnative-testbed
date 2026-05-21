@@ -1,0 +1,65 @@
+namespace: monitoring
+
+targets:
+  - namespace: free5gc
+
+gateway:
+  ip: 192.168.18.234
+  gatewayClassName: cilium
+  hostname: 5g-observer.local
+
+frontend:
+  image: ghcr.io/lpoclin/5g-observer-frontend:latest
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  nodeSelector:
+    role: observability
+
+apiServer:
+  image: ghcr.io/lpoclin/5g-observer-api:latest
+  replicas: 1
+  port: 8080
+  grpcPort: 9999
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  nodeSelector:
+    role: observability
+
+captureAgent:
+  image: ghcr.io/lpoclin/5g-observer-capture:latest
+  enabled: true
+  # Only deploy on nodes with role=userplane
+  nodeSelector:
+    role: userplane
+  persistence:
+    enabled: false
+    storageClass: longhorn
+    size: 5Gi
+    retentionHours: 24
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+loki:
+  url: http://loki-gateway.loki
+
+prometheus:
+  url: http://kube-prometheus-stack-prometheus.monitoring:9090
+
+hubble:
+  address: hubble-relay.kube-system:4245
