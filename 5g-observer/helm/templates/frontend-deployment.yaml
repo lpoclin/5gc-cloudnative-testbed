@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: 5g-observer-frontend
+  name: observer-frontend
   namespace: {{ .Values.namespace }}
   labels:
     app: 5g-observer-frontend
@@ -18,7 +18,7 @@ spec:
         app: 5g-observer-frontend
         app.kubernetes.io/name: 5g-observer
     spec:
-      serviceAccountName: 5g-observer
+      serviceAccountName: observer
       {{- if .Values.frontend.nodeSelector }}
       nodeSelector:
         {{- toYaml .Values.frontend.nodeSelector | nindent 8 }}

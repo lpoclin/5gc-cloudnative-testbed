@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: 5g-observer
+  name: observer
   namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/name: 5g-observer

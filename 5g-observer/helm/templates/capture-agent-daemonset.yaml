@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: 5g-observer-capture
+  name: observer-capture
   namespace: {{ .Values.namespace }}
   labels:
     app: 5g-observer-capture
@@ -18,7 +18,7 @@ spec:
         app: 5g-observer-capture
         app.kubernetes.io/name: 5g-observer
     spec:
-      serviceAccountName: 5g-observer
+      serviceAccountName: observer
       hostPID: true
       nodeSelector:
         {{- toYaml .Values.captureAgent.nodeSelector | nindent 8 }}
@@ -69,6 +69,6 @@ spec:
         {{- if .Values.captureAgent.persistence.enabled }}
         - name: pcap-storage
           persistentVolumeClaim:
-            claimName: 5g-observer-pcap
+            claimName: observer-pcap
         {{- end }}
 {{- end }}
