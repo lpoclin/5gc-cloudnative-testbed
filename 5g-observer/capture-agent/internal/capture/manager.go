@@ -127,13 +127,14 @@ func (m *Manager) runCapture(ctx context.Context, key sessionKey, pod discovery.
 			if !ok {
 				continue
 			}
-			ts, _ := strconv.ParseFloat(fields["ts"], 64)
+			// Use integer arithmetic to preserve nanosecond precision — no float64 conversion.
+			tsNs := epochStringToNs(fields["ts"])
 			length, _ := strconv.ParseUint(fields["length"], 10, 32)
 			sport, _ := strconv.ParseUint(fields["src_port"], 10, 32)
 			dport, _ := strconv.ParseUint(fields["dst_port"], 10, 32)
 
 			raw := RawPacket{
-				TimestampNs: int64(ts * 1e9),
+				TimestampNs: tsNs,
 				SrcIP:       fields["src_ip"],
 				DstIP:       fields["dst_ip"],
 				SrcPort:     uint32(sport),

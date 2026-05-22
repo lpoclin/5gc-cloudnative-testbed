@@ -61,11 +61,35 @@ func DecodePacketHandler(cap *capture.Server) gin.HandlerFunc {
 			return
 		}
 
+		log.Debug().
+			Str("pod", pod).
+			Str("iface", iface).
+			Int64("ts", tsNs).
+			Msg("decode request received")
+
 		rawBytes, linkType, ok := cap.GetRawByTs(pod, iface, tsNs)
+
+		log.Debug().
+			Str("pod", pod).
+			Str("iface", iface).
+			Bool("found", ok).
+			Int("raw_len", len(rawBytes)).
+			Msg("ring buffer lookup result")
+
 		if !ok || len(rawBytes) == 0 {
+			// Dump known ring keys to help diagnose pod-name or interface mismatches
+			keys := cap.GetRingKeys()
+			log.Warn().
+				Str("pod", pod).
+				Str("iface", iface).
+				Int64("ts", tsNs).
+				Interface("known_ring_keys", keys).
+				Msg("decode miss: packet not in ring buffer")
+
 			c.JSON(http.StatusNotFound, gin.H{
-				"sharkd": false,
-				"error":  "packet not found in ring buffer (too old or raw bytes not yet populated)",
+				"sharkd":    false,
+				"error":     "packet not found in ring buffer (too old or raw bytes not yet populated)",
+				"ring_keys": keys,
 			})
 			return
 		}

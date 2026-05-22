@@ -7,7 +7,7 @@ import { api } from '@/services/api'
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface WirePkt {
-  ts: number
+  ts: string  // nanosecond integer sent as JSON string to avoid JS float64 precision loss
   src_ip: string
   dst_ip: string
   src_port: number
@@ -24,7 +24,7 @@ interface WirePkt {
 
 interface LivePacket {
   no: number
-  ts: number
+  ts: string  // nanosecond integer as string — exact value used for decode URL, Number(ts) for display
   srcIP: string
   dstIP: string
   srcPort: number
@@ -46,8 +46,10 @@ const PROTOCOLS = ['All', 'GTP-U', 'PFCP', 'HTTP/2', 'NGAP', 'SCTP', 'DNS', 'TCP
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Relative time since capture start: "seconds.microseconds" per Wireshark format */
-function fmtRelTime(tsNs: number, startNs: number): string {
+/** Relative time since capture start: "seconds.microseconds" per Wireshark format.
+ *  ts is the nanosecond string from the server; Number() is used for display arithmetic only. */
+function fmtRelTime(ts: string, startNs: number): string {
+  const tsNs = Number(ts)
   if (startNs === 0 || tsNs < startNs) return '0.000000'
   const deltaNs = tsNs - startNs
   const s  = Math.floor(deltaNs / 1_000_000_000)
@@ -55,8 +57,10 @@ function fmtRelTime(tsNs: number, startNs: number): string {
   return `${s}.${String(us).padStart(6, '0')}`
 }
 
-/** Arrival time in HH:MM:SS.ffffff */
-function fmtArrival(tsNs: number): string {
+/** Arrival time in HH:MM:SS.ffffff.
+ *  ts is the nanosecond string from the server; Number() is used for display arithmetic only. */
+function fmtArrival(ts: string): string {
+  const tsNs = Number(ts)
   const d  = new Date(tsNs / 1_000_000)
   const hh = d.getUTCHours().toString().padStart(2, '0')
   const mm = d.getUTCMinutes().toString().padStart(2, '0')
@@ -317,7 +321,7 @@ function DecodeTree({ pkt, startNs }: { pkt: LivePacket; startNs: number }) {
       {/* ── Frame ── */}
       <Layer label={`Frame ${pkt.no}: ${pkt.length} bytes on wire, ${pkt.length} bytes captured`}>
         <Field label="Arrival Time"   value={fmtArrival(pkt.ts)} />
-        <Field label="Epoch Time"     value={(pkt.ts / 1e9).toFixed(9) + ' seconds'} />
+        <Field label="Epoch Time"     value={(Number(pkt.ts) / 1e9).toFixed(9) + ' seconds'} />
         <Field label="Relative Time"  value={fmtRelTime(pkt.ts, startNs) + ' seconds'} />
         <Field label="Interface"      value={pkt.iface} />
         <Field label="Frame Length"   value={`${pkt.length} bytes (${pkt.length * 8} bits)`} />
@@ -861,7 +865,8 @@ export default function CapturePage() {
       }))
 
       // Record nanosecond timestamp of the first packet in this capture session
-      setCaptureTs(prev => (prev === 0 && parsed.length > 0) ? parsed[0].ts : prev)
+      // captureTs is number (used only for display arithmetic); convert string ts via Number()
+      setCaptureTs(prev => (prev === 0 && parsed.length > 0) ? Number(parsed[0].ts) : prev)
 
       if (pausedRef.current) {
         bufferRef.current = [...bufferRef.current, ...parsed].slice(-RING_MAX)

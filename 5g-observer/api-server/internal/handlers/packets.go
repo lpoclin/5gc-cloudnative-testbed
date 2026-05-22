@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
@@ -55,7 +56,7 @@ func (h *PacketsHandler) StreamPackets(c *gin.Context) {
 	}()
 
 	type wirePacket struct {
-		TimestampNs   int64  `json:"ts"`
+		Timestamp     string `json:"ts"` // sent as string to preserve int64 precision in JS
 		SrcIP         string `json:"src_ip"`
 		DstIP         string `json:"dst_ip"`
 		SrcPort       uint32 `json:"src_port"`
@@ -83,7 +84,8 @@ func (h *PacketsHandler) StreamPackets(c *gin.Context) {
 			wire := make([]wirePacket, len(pkts))
 			for i, p := range pkts {
 				wire[i] = wirePacket{
-					TimestampNs: p.TimestampNs, SrcIP: p.SrcIP, DstIP: p.DstIP,
+					Timestamp: strconv.FormatInt(p.TimestampNs, 10),
+					SrcIP: p.SrcIP, DstIP: p.DstIP,
 					SrcPort: p.SrcPort, DstPort: p.DstPort, Protocol: p.Protocol,
 					Length: p.Length, Info: p.Info, Raw: p.Raw,
 					InterfaceName: p.InterfaceName, PodName: p.PodName,
@@ -146,7 +148,7 @@ func (h *PacketsHandler) StreamPacketsQuery(c *gin.Context) {
 	}()
 
 	type wirePacket struct {
-		TimestampNs   int64  `json:"ts"`
+		Timestamp     string `json:"ts"` // sent as string to preserve int64 precision in JS
 		SrcIP         string `json:"src_ip"`
 		DstIP         string `json:"dst_ip"`
 		SrcPort       uint32 `json:"src_port"`
@@ -172,7 +174,8 @@ func (h *PacketsHandler) StreamPacketsQuery(c *gin.Context) {
 			wire := make([]wirePacket, len(pkts))
 			for i, p := range pkts {
 				wire[i] = wirePacket{
-					TimestampNs: p.TimestampNs, SrcIP: p.SrcIP, DstIP: p.DstIP,
+					Timestamp: strconv.FormatInt(p.TimestampNs, 10),
+					SrcIP: p.SrcIP, DstIP: p.DstIP,
 					SrcPort: p.SrcPort, DstPort: p.DstPort, Protocol: p.Protocol,
 					Length: p.Length, Info: p.Info,
 					InterfaceName: p.InterfaceName, PodName: p.PodName,

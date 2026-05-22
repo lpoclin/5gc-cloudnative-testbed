@@ -240,33 +240,60 @@ func ParseTsharkLine(line string) (map[string]string, bool) {
 	}, true
 }
 
+// epochStringToNs converts a tshark frame.time_epoch string such as
+// "1779484323.482605934" to nanoseconds using pure integer arithmetic.
+// No float64 conversion is used, so nanosecond precision is preserved exactly.
+func epochStringToNs(epochStr string) int64 {
+	parts := strings.SplitN(epochStr, ".", 2)
+	sec, _ := strconv.ParseInt(parts[0], 10, 64)
+	tsNs := sec * 1_000_000_000
+	if len(parts) == 2 {
+		frac := parts[1]
+		for len(frac) < 9 {
+			frac += "0"
+		}
+		frac = frac[:9] // truncate to exactly 9 digits (nanoseconds)
+		nsec, _ := strconv.ParseInt(frac, 10, 64)
+		tsNs += nsec
+	}
+	return tsNs
+}
+
 // parsePcapFrames reads a libpcap byte stream and sends raw packet bytes for
 // each frame on rawCh.  Called in a goroutine alongside the tshark text parser;
 // frames appear in the same sequential order as tshark output lines.
 func parsePcapFrames(r io.Reader, rawCh chan<- []byte) {
+	log.Debug().Msg("parsePcapFrames: starting")
+
 	// pcap global header: 24 bytes
 	// magic(4) versionMajor(2) versionMinor(2) thiszone(4) sigfigs(4) snaplen(4) network(4)
 	var magic [4]byte
 	if _, err := io.ReadFull(r, magic[:]); err != nil {
+		log.Error().Err(err).Msg("parsePcapFrames: failed to read magic bytes")
 		return
 	}
 	magicNum := binary.LittleEndian.Uint32(magic[:])
+	log.Debug().Uint32("magic", magicNum).Msg("parsePcapFrames: read magic")
+
 	bigEndian := magicNum == 0xd4c3b2a1 || magicNum == 0x4d3cb2a1
 	if magicNum != 0xa1b2c3d4 && magicNum != 0xa1b23c4d && !bigEndian {
-		log.Warn().Uint32("magic", magicNum).Msg("pcap: unrecognized magic, skipping raw bytes")
+		log.Warn().Uint32("magic", magicNum).Msg("parsePcapFrames: unrecognized magic, raw bytes unavailable")
 		return
 	}
 
 	// Discard remaining 20 bytes of global header
 	var rest [20]byte
 	if _, err := io.ReadFull(r, rest[:]); err != nil {
+		log.Error().Err(err).Msg("parsePcapFrames: failed to read global header")
 		return
 	}
 
 	// Per-packet record: ts_sec(4) ts_usec(4) incl_len(4) orig_len(4) + data
 	var hdr [16]byte
+	frameCount := 0
 	for {
 		if _, err := io.ReadFull(r, hdr[:]); err != nil {
+			log.Debug().Int("frames_read", frameCount).Msg("parsePcapFrames: done")
 			return
 		}
 		var inclLen uint32
@@ -277,7 +304,13 @@ func parsePcapFrames(r io.Reader, rawCh chan<- []byte) {
 		}
 		data := make([]byte, inclLen)
 		if _, err := io.ReadFull(r, data); err != nil {
+			log.Error().Err(err).Uint32("expected_len", inclLen).Int("frame", frameCount+1).
+				Msg("parsePcapFrames: failed to read frame data")
 			return
+		}
+		frameCount++
+		if frameCount <= 3 || frameCount%1000 == 0 {
+			log.Debug().Int("frame", frameCount).Int("len", len(data)).Msg("parsePcapFrames: frame read")
 		}
 		rawCh <- data
 	}

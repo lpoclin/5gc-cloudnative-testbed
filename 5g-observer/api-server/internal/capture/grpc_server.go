@@ -3,6 +3,7 @@
 package capture
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -266,10 +267,27 @@ func (s *Server) publish(key SessionKey, pkts []Packet) {
 		}
 		s.pktRingMu.Unlock()
 
+		stored := 0
 		for _, p := range pkts {
 			if len(p.Raw) > 0 {
 				ring.push(PktEntry{TsNs: p.TimestampNs, Raw: p.Raw})
+				stored++
 			}
+		}
+		if stored > 0 {
+			log.Debug().
+				Str("pod", wKey.PodName).
+				Str("iface", wKey.Iface).
+				Int("stored", stored).
+				Int("skipped_no_raw", len(pkts)-stored).
+				Int("ring_size", ring.size).
+				Msg("pkt ring stored")
+		} else {
+			log.Debug().
+				Str("pod", wKey.PodName).
+				Str("iface", wKey.Iface).
+				Int("batch", len(pkts)).
+				Msg("pkt ring: batch skipped (no raw bytes in any packet)")
 		}
 	}
 }
@@ -286,6 +304,21 @@ func (s *Server) GetRawByTs(pod, iface string, tsNs int64) (raw []byte, linkType
 	}
 	raw, ok = ring.getByTs(tsNs)
 	return raw, ring.linkType, ok
+}
+
+// GetRingKeys returns all (pod, iface) pairs currently in the ring buffer.
+// Used for diagnostic logging when a decode lookup misses.
+func (s *Server) GetRingKeys() [][2]string {
+	s.pktRingMu.RLock()
+	defer s.pktRingMu.RUnlock()
+	out := make([][2]string, 0, len(s.pktRings))
+	for k, r := range s.pktRings {
+		r.mu.RLock()
+		sz := r.size
+		r.mu.RUnlock()
+		out = append(out, [2]string{k.PodName + "/" + k.Iface, fmt.Sprintf("size=%d", sz)})
+	}
+	return out
 }
 
 // GetPacketsAfterTs returns all raw packets with tsNs >= cutoffNs for export.
@@ -316,6 +349,13 @@ func (s *Server) StreamPackets(stream grpc.ClientStreamingServer[pb.PacketBatch,
 
 		p0 := batch.Packets[0]
 		key := SessionKey{Node: p0.Node, PodName: p0.PodName, Iface: p0.InterfaceName}
+
+		log.Debug().
+			Str("pod", p0.PodName).
+			Str("iface", p0.InterfaceName).
+			Int("raw_len", len(p0.Raw)).
+			Int("batch_size", len(batch.Packets)).
+			Msg("pkt ring received")
 
 		pkts := make([]Packet, len(batch.Packets))
 		for i, p := range batch.Packets {
