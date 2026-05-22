@@ -409,13 +409,15 @@ function runDraw(
       ctx.stroke()
       ctx.globalAlpha = 1
 
-      // E3: Interface label — bold 12px Inter, white
+      // Fix 7: Interface label — bold 12px, centered on connector, middle baseline
       if (c.label) {
         const midY = (connEnd + busScrY) / 2
         ctx.font = 'bold 12px Inter, system-ui, sans-serif'
         ctx.fillStyle = '#ffffff'
-        ctx.textAlign = 'left'
-        ctx.fillText(c.label, c.screenX + 5, midY)
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(c.label, c.screenX, midY)
+        ctx.textBaseline = 'alphabetic'
       }
     }
     ctx.setLineDash([])
@@ -429,22 +431,22 @@ function runDraw(
     const h     = cn.renderedHeight()
     const color = badgeColor(cn.data('status') as string, (cn.data('restarts') as number) ?? 0)
 
-    // Bottom-right, 2px inset from border (E6: 12×12px badge)
-    const bx = p.x + w / 2 - 8   // center-x of badge
-    const by = p.y + h / 2 - 8   // center-y of badge
+    // Bottom-right, 2px inset from border (Fix 5: 16×16px badge)
+    const bx = p.x + w / 2 - 10   // center-x of badge
+    const by = p.y + h / 2 - 10   // center-y of badge
 
     if (HEART_PATH) {
       ctx.save()
-      // Scale 14×14 heart path down to 12×12; center at (bx, by)
-      ctx.translate(bx - 6, by - 6)
-      ctx.scale(12 / 14, 12 / 14)
+      // Scale 14×14 heart path up to 16×16; center at (bx, by)
+      ctx.translate(bx - 8, by - 8)
+      ctx.scale(16 / 14, 16 / 14)
       ctx.fillStyle = color
       ctx.fill(HEART_PATH)
       ctx.restore()
     } else {
       // Fallback: colored circle
       ctx.beginPath()
-      ctx.arc(bx, by, 4, 0, Math.PI * 2)
+      ctx.arc(bx, by, 5, 0, Math.PI * 2)
       ctx.fillStyle = color
       ctx.fill()
     }
@@ -453,7 +455,7 @@ function runDraw(
     if (color !== BADGE_OK) {
       const pulse = 0.5 + 0.5 * Math.sin(t * 3)
       ctx.beginPath()
-      ctx.arc(bx, by - 2, 7 + pulse * 4, 0, Math.PI * 2)
+      ctx.arc(bx, by - 2, 9 + pulse * 4, 0, Math.PI * 2)
       ctx.strokeStyle = color
       ctx.globalAlpha = 0.35 * (1 - pulse)
       ctx.lineWidth = 1
@@ -608,15 +610,14 @@ function DotTipBox({
 }) {
   const style: React.CSSProperties = {
     position: 'absolute',
-    left: tip.pos.x + 14,
-    top: Math.max(4, tip.pos.y - 10),
+    left: tip.pos.x,
+    top: tip.pos.y,
     zIndex: 50,
     maxWidth: 260,
     background: '#161b22',
     border: `1px solid ${NODE_BORDER}`,
     pointerEvents: 'auto',
   }
-  if (tip.pos.x > 800) { style.left = undefined; style.right = 14 }
   return (
     <div
       style={style}
@@ -676,8 +677,7 @@ export default function TopologyCanvas({
   const dotsRef        = useRef<EndpointDot[]>([])
   const mousePos       = useRef({ x: 0, y: 0 })
   const nodeTipTimer   = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const dotTipTimer    = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const dotHideTimer   = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)  // grace period
+  const dotHideTimer   = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const metricsTimer   = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const trafficRef     = useRef(trafficEdgeIds ?? new Set<string>())
   const sbiLabelsRef   = useRef(new Map<string, string>())
@@ -702,20 +702,20 @@ export default function TopologyCanvas({
   }, [graph.edges])
   useEffect(() => { sbiLabelsRef.current = sbiLabels }, [sbiLabels])
 
+  // Extract identity keys so the metrics effect only re-runs when the dot changes,
+  // not when the tooltip position updates due to pan/zoom micro-movement.
+  const dotPodName = dotTip?.node.podName ?? null
+  const dotIface   = dotTip?.iface ?? null
+
   // ── Interface metrics fetch (refreshed every 5s while tooltip is visible) ──
   useEffect(() => {
     clearInterval(metricsTimer.current)
     setDotMetrics(null)
-    if (!dotTip) return
-
-    const nodeIP = dotTip.node.nodeIP ?? ''
-    if (!nodeIP) return
+    if (!dotPodName || !dotIface) return
 
     const fetchM = () => {
       setMetricsLoading(true)
-      fetch(
-        `/api/metrics/interface?pod=${encodeURIComponent(dotTip.node.podName)}&interface=${encodeURIComponent(dotTip.iface)}&nodeIP=${encodeURIComponent(nodeIP)}`,
-      )
+      fetch(`/api/metrics/interface?pod=${encodeURIComponent(dotPodName)}&interface=${encodeURIComponent(dotIface)}`)
         .then(r => r.json() as Promise<IfaceMetrics>)
         .then(m => { setDotMetrics(m); setMetricsLoading(false) })
         .catch(() => { setDotMetrics(null); setMetricsLoading(false) })
@@ -723,7 +723,7 @@ export default function TopologyCanvas({
     fetchM()
     metricsTimer.current = setInterval(fetchM, 5_000)
     return () => clearInterval(metricsTimer.current)
-  }, [dotTip])
+  }, [dotPodName, dotIface])
 
   const nodeMap = useMemo(() => {
     const m = new Map<string, TopologyNode>()
@@ -802,16 +802,24 @@ export default function TopologyCanvas({
         if (Math.sqrt(dx * dx + dy * dy) < 8) { hit = d; break }
       }
       if (hit) {
-        clearTimeout(dotHideTimer.current)  // cancel grace-period hide
-        clearTimeout(dotTipTimer.current)
-        const snap = { ...mousePos.current }
+        clearTimeout(dotHideTimer.current)
         const h = hit
-        dotTipTimer.current = setTimeout(() => {
-          setDotTip({ node: h.node, iface: h.iface, pos: snap })
-          setNodeTip(null)
-        }, 200)
+        const cw = containerRef.current?.clientWidth ?? 1200
+        const ch = containerRef.current?.clientHeight ?? 800
+        // Position tooltip 15px right, 10px up from dot center, clamped to canvas
+        const pos = {
+          x: Math.min(h.x + 15, cw - 268),
+          y: Math.max(4, Math.min(h.y - 10, ch - 168)),
+        }
+        // Only update state when dot or position changes — prevents metrics re-fetch on micro-movement
+        setDotTip(prev =>
+          prev?.node.id === h.node.id && prev?.iface === h.iface &&
+          Math.abs(prev.pos.x - pos.x) < 2 && Math.abs(prev.pos.y - pos.y) < 2
+            ? prev
+            : { node: h.node, iface: h.iface, pos },
+        )
+        setNodeTip(null)
       } else {
-        clearTimeout(dotTipTimer.current)
         // 300ms grace period so mouse can reach the tooltip div without it vanishing
         dotHideTimer.current = setTimeout(() => setDotTip(null), 300)
       }
@@ -875,7 +883,7 @@ export default function TopologyCanvas({
 
     return () => {
       clearTimeout(nodeTipTimer.current)
-      clearTimeout(dotTipTimer.current)
+      clearTimeout(dotHideTimer.current)
       containerRef.current?.removeEventListener('mousemove', onMove)
       containerRef.current?.removeEventListener('click', onClick)
       cy.destroy()

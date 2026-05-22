@@ -16,7 +16,7 @@ const SIDE_MAX = 600
 const SIDE_DEFAULT = 350
 const TERM_MIN = 150
 const TERM_MAX = 500
-const TERM_DEFAULT = 280
+const TERM_DEFAULT = 200
 
 function getSaved(key: string, def: number): number {
   try { const v = Number(localStorage.getItem(key)); return isNaN(v) ? def : Math.max(def - def, v) } catch { return def }
@@ -26,8 +26,8 @@ function getSaved(key: string, def: number): number {
 
 export default function TopologyPage() {
   const [selectedNode, setSelectedNode] = useState<TopologyNode | null>(null)
-  const [sidePanelOpen, setSidePanelOpen] = useState(false)
-  const [termOpen, setTermOpen]       = useState(false)
+  const [sidePanelOpen, setSidePanelOpen] = useState(true)
+  const [termOpen, setTermOpen]       = useState(true)
   const [sideWidth,   setSideWidth]   = useState(() => getSaved('5g-observer-sidepanel-width', SIDE_DEFAULT))
   const [termHeight,  setTermHeight]  = useState(() => getSaved('5g-observer-terminal-height', TERM_DEFAULT))
   const { push } = useToast()
@@ -167,8 +167,8 @@ export default function TopologyPage() {
           )}
         </div>
 
-        {/* Side panel with drag handle */}
-        {sidePanelOpen && selectedNode && graph && (
+        {/* Side panel with drag handle — always visible when graph is loaded */}
+        {sidePanelOpen && graph && (
           <div
             className="shrink-0 h-full flex"
             style={{ width: sideWidth, borderLeft: '1px solid #30363d' }}
@@ -182,11 +182,36 @@ export default function TopologyPage() {
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#30363d' }}
             />
             <div className="flex-1 min-w-0 h-full overflow-hidden">
-              <SidePanel
-                node={selectedNode}
-                allNodes={graph.nodes}
-                onClose={handleClosePanel}
-              />
+              {selectedNode ? (
+                <SidePanel
+                  node={selectedNode}
+                  allNodes={graph.nodes}
+                  onClose={handleClosePanel}
+                />
+              ) : (
+                <div
+                  className="flex flex-col h-full"
+                  style={{ background: '#0d1117' }}
+                >
+                  {/* Header matching SidePanel style */}
+                  <div className="flex items-center gap-2 px-3 py-2 shrink-0"
+                    style={{ background: '#161b22', borderBottom: '1px solid #30363d' }}>
+                    <span className="text-sm font-semibold flex-1" style={{ color: '#e6edf3' }}>NF Detail</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs px-2 py-0.5 rounded"
+                        style={{ color: '#58a6ff', background: 'rgba(31,111,235,0.12)' }}>Logs</span>
+                      <span className="text-xs px-2 py-0.5 rounded" style={{ color: '#6e7681' }}>Info</span>
+                    </div>
+                  </div>
+                  <div className="flex-1 flex flex-col items-center justify-center gap-3" style={{ color: '#6e7681' }}>
+                    <span className="text-3xl opacity-20">◫</span>
+                    <span className="text-xs text-center px-4">Select an NF to view logs</span>
+                    <span className="text-[10px] text-center px-6" style={{ color: '#30363d' }}>
+                      Click a node in the topology canvas
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

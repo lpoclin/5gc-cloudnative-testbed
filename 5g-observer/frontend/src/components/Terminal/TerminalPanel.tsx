@@ -420,7 +420,7 @@ export default function TerminalPanel({ open, onToggle, height = 260 }: Terminal
           onMouseLeave={e => { (e.target as HTMLElement).style.color = '#6e7681' }}
           title={open ? 'Collapse (Ctrl+`)' : 'Expand (Ctrl+`)'}
         >
-          {open ? '▾' : '▸'}
+          {open ? '⌨ Terminal ▲' : '⌨ Terminal ▼'}
         </button>
       </div>
 

@@ -61,6 +61,85 @@ function wsUrl(pod: string, iface: string): string {
   return `${proto}://${host}/ws/packets?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}`
 }
 
+// ─── Decode panel ─────────────────────────────────────────────────────────────
+
+function DecodeLayer({
+  label, fields, defaultOpen = true,
+}: {
+  label: string
+  fields: [string, string | number][]
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1.5 w-full px-3 py-0.5 text-left hover:bg-white/5"
+        style={{ color: '#58a6ff' }}
+      >
+        <span style={{ fontSize: 9 }}>{open ? '▼' : '▶'}</span>
+        <span className="font-bold text-[11px]">{label}</span>
+      </button>
+      {open && (
+        <div className="pl-7 pr-3 pb-1">
+          {fields.map(([k, v]) => (
+            <div key={k} className="flex gap-2 py-px text-[11px]">
+              <span className="shrink-0" style={{ color: '#8b949e', minWidth: 130 }}>{k}:</span>
+              <span className="break-all" style={{ color: '#e6edf3' }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DecodePanel({ pkt }: { pkt: LivePacket }) {
+  const isIPv6 = pkt.srcIP.includes(':')
+  const ipVer  = isIPv6 ? 'IPv6' : 'IPv4'
+  const transport =
+    ['TCP', 'HTTP/2'].includes(pkt.protocol) ? 'TCP' :
+    ['SCTP', 'NGAP'].includes(pkt.protocol) ? 'SCTP' : 'UDP'
+
+  return (
+    <div
+      className="font-mono overflow-y-auto shrink-0"
+      style={{ height: 180, background: '#0d1117', borderTop: '2px solid #388bfd' }}
+    >
+      <div className="flex items-center gap-2 px-3 py-1 sticky top-0"
+        style={{ background: '#0d1117', borderBottom: '1px solid #21262d' }}>
+        <span className="text-[10px] font-bold" style={{ color: '#58a6ff' }}>PACKET DECODE</span>
+        <span className="text-[10px]" style={{ color: '#6e7681' }}>Frame #{pkt.no}</span>
+      </div>
+
+      <DecodeLayer label="Frame" fields={[
+        ['Arrival Time', fmtTime(pkt.ts)],
+        ['Interface',    pkt.iface],
+        ['Length',       `${pkt.length} bytes`],
+        ['Pod',          pkt.pod],
+      ]} />
+
+      <DecodeLayer label={ipVer} fields={[
+        ['Source Address',      pkt.srcIP],
+        ['Destination Address', pkt.dstIP],
+        ['Next Protocol',       transport],
+      ]} />
+
+      <DecodeLayer label={transport} fields={[
+        ['Source Port',      pkt.srcPort  ? String(pkt.srcPort)  : '—'],
+        ['Destination Port', pkt.dstPort  ? String(pkt.dstPort)  : '—'],
+      ]} />
+
+      {pkt.info && (
+        <DecodeLayer label={pkt.protocol} fields={[
+          ['Info', pkt.info],
+        ]} />
+      )}
+    </div>
+  )
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function CapturePage() {
@@ -78,6 +157,7 @@ export default function CapturePage() {
   const [paused,      setPaused]      = useState(false)
   const [protoFilter, setProtoFilter] = useState<string>('All')
   const [search,      setSearch]      = useState('')
+  const [selectedNo,  setSelectedNo]  = useState<number | null>(null)
 
   // Refs for WS lifetime and paused buffer (avoid stale closures)
   const wsRef        = useRef<WebSocket | null>(null)
@@ -212,15 +292,30 @@ export default function CapturePage() {
     wsRef.current?.send(JSON.stringify({ type: 'clear' }))
   }, [])
 
+  const selectedPkt = selectedNo !== null
+    ? displayed.find(p => p.no === selectedNo) ?? null
+    : null
+
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const statusDot = () => {
-    if (status === 'live')    return <><span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"/><span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" style={{animationDelay:'0.15s'}}/><span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" style={{animationDelay:'0.3s'}}/><span className="ml-1 text-green-400">LIVE</span></>
-    if (status === 'paused')  return <><span className="w-2 h-2 rounded-full bg-yellow-500"/><span className="ml-1 text-yellow-500">PAUSED</span></>
-    if (status === 'connecting') return <><span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"/><span className="ml-1 text-blue-400">Connecting…</span></>
-    if (status === 'error')   return <><span className="w-2 h-2 rounded-full bg-red-500"/><span className="ml-1 text-red-400">ERROR</span></>
-    if (status === 'stopped') return <><span className="w-2 h-2 rounded-full" style={{background:'#f85149'}}/><span className="ml-1" style={{color:'#f85149'}}>STOPPED</span></>
-    return <><span className="w-2 h-2 rounded-full" style={{background:'#6e7681'}}/><span className="ml-1" style={{color:'#6e7681'}}>IDLE</span></>
+  const statusBadge = () => {
+    if (status === 'live') return (
+      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full font-bold text-xs tracking-widest"
+        style={{ background: '#0d2a14', border: '2px solid #3fb950', color: '#3fb950' }}>
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+            style={{ background: '#3fb950' }}/>
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5"
+            style={{ background: '#3fb950' }}/>
+        </span>
+        LIVE
+      </span>
+    )
+    if (status === 'paused')     return <span className="px-2 py-1 rounded text-xs font-bold" style={{ background: '#2d2a0a', border: '1px solid #d29922', color: '#d29922' }}>⏸ PAUSED</span>
+    if (status === 'connecting') return <span className="px-2 py-1 rounded text-xs font-bold animate-pulse" style={{ background: '#0d1f3c', border: '1px solid #388bfd', color: '#58a6ff' }}>Connecting…</span>
+    if (status === 'error')      return <span className="px-2 py-1 rounded text-xs font-bold" style={{ background: '#2d0a0a', border: '1px solid #f85149', color: '#f85149' }}>ERROR</span>
+    if (status === 'stopped')    return <span className="px-2 py-1 rounded text-xs font-bold" style={{ background: '#1a1a1a', border: '1px solid #6e7681', color: '#6e7681' }}>STOPPED</span>
+    return <span className="px-2 py-1 rounded text-xs" style={{ color: '#6e7681' }}>IDLE</span>
   }
 
   return (
@@ -259,8 +354,8 @@ export default function CapturePage() {
 
         <div className="flex-1" />
 
-        {/* Live indicator */}
-        <div className="flex items-center gap-1 text-xs">{statusDot()}</div>
+        {/* Live indicator — Fix 8: prominent animated badge */}
+        <div className="flex items-center">{statusBadge()}</div>
       </div>
 
       {/* ── FILTER BAR ─────────────────────────────────────────────────────── */}
@@ -312,29 +407,40 @@ export default function CapturePage() {
             <span className="flex-1">Info</span>
           </div>
 
-          <div ref={tableRef} className="flex-1 overflow-y-auto font-mono"
-            style={{ background: '#0d1117' }}>
-            <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-              {virtualizer.getVirtualItems().map(item => {
-                const pkt = displayed[item.index]!
-                const color = protoColor(pkt.protocol)
-                return (
-                  <div
-                    key={item.key}
-                    style={{ position: 'absolute', top: item.start, width: '100%', height: item.size }}
-                    className="flex items-center gap-2 px-3 hover:bg-white/5 cursor-default"
-                  >
-                    <span className="w-10 shrink-0 text-right" style={{ color: '#6e7681' }}>{pkt.no}</span>
-                    <span className="w-24 shrink-0" style={{ color: '#8b949e' }}>{fmtTime(pkt.ts)}</span>
-                    <span className="w-32 shrink-0 truncate">{pkt.srcIP}{pkt.srcPort ? `:${pkt.srcPort}` : ''}</span>
-                    <span className="w-32 shrink-0 truncate">{pkt.dstIP}{pkt.dstPort ? `:${pkt.dstPort}` : ''}</span>
-                    <span className="w-20 shrink-0 font-bold" style={{ color }}>{pkt.protocol}</span>
-                    <span className="w-12 shrink-0 text-right" style={{ color: '#6e7681' }}>{pkt.length}</span>
-                    <span className="flex-1 truncate" style={{ color: '#c9d1d9' }}>{pkt.info}</span>
-                  </div>
-                )
-              })}
+          <div className="flex flex-col flex-1 min-h-0">
+            <div ref={tableRef} className="flex-1 overflow-y-auto font-mono"
+              style={{ background: '#0d1117' }}>
+              <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+                {virtualizer.getVirtualItems().map(item => {
+                  const pkt = displayed[item.index]!
+                  const color = protoColor(pkt.protocol)
+                  const isSelected = pkt.no === selectedNo
+                  return (
+                    <div
+                      key={item.key}
+                      onClick={() => setSelectedNo(prev => prev === pkt.no ? null : pkt.no)}
+                      style={{
+                        position: 'absolute', top: item.start, width: '100%', height: item.size,
+                        background: isSelected ? '#1c2d4a' : undefined,
+                        borderLeft: isSelected ? '2px solid #388bfd' : '2px solid transparent',
+                      }}
+                      className="flex items-center gap-2 px-3 hover:bg-white/5 cursor-pointer"
+                    >
+                      <span className="w-10 shrink-0 text-right" style={{ color: '#6e7681' }}>{pkt.no}</span>
+                      <span className="w-24 shrink-0" style={{ color: '#8b949e' }}>{fmtTime(pkt.ts)}</span>
+                      <span className="w-32 shrink-0 truncate">{pkt.srcIP}{pkt.srcPort ? `:${pkt.srcPort}` : ''}</span>
+                      <span className="w-32 shrink-0 truncate">{pkt.dstIP}{pkt.dstPort ? `:${pkt.dstPort}` : ''}</span>
+                      <span className="w-20 shrink-0 font-bold" style={{ color }}>{pkt.protocol}</span>
+                      <span className="w-12 shrink-0 text-right" style={{ color: '#6e7681' }}>{pkt.length}</span>
+                      <span className="flex-1 truncate" style={{ color: '#c9d1d9' }}>{pkt.info}</span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
+
+            {/* Fix 2: Packet decode panel — appears when a row is selected */}
+            {selectedPkt && <DecodePanel pkt={selectedPkt} />}
           </div>
         </>
       )}
