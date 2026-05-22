@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -46,19 +47,81 @@ type wildcardKey struct {
 // Subscriber receives packets for a session.
 type Subscriber chan []Packet
 
+// statEntry records one batch of packets received at a point in time.
+type statEntry struct {
+	ts    time.Time
+	pkts  int
+	bytes int64
+}
+
 // Server implements pb.CaptureServiceServer and fans packets to subscribers.
 type Server struct {
 	pb.UnimplementedCaptureServiceServer
 	mu           sync.RWMutex
 	subs         map[SessionKey][]Subscriber
 	wildcardSubs map[wildcardKey][]Subscriber
+
+	// Rolling traffic stats — 3-second sliding window, keyed by pod+interface
+	statsMu  sync.Mutex
+	statsMap map[wildcardKey][]statEntry
 }
 
 func NewServer() *Server {
 	return &Server{
 		subs:         make(map[SessionKey][]Subscriber),
 		wildcardSubs: make(map[wildcardKey][]Subscriber),
+		statsMap:     make(map[wildcardKey][]statEntry),
 	}
+}
+
+// recordStats appends a stat entry and prunes entries older than 3 seconds.
+func (s *Server) recordStats(key wildcardKey, pkts []Packet) {
+	var totalBytes int64
+	for _, p := range pkts {
+		totalBytes += int64(p.Length)
+	}
+	entry := statEntry{ts: time.Now(), pkts: len(pkts), bytes: totalBytes}
+	cutoff := entry.ts.Add(-3 * time.Second)
+
+	s.statsMu.Lock()
+	prev := s.statsMap[key]
+	// prune in-place then append
+	keep := prev[:0]
+	for _, e := range prev {
+		if e.ts.After(cutoff) {
+			keep = append(keep, e)
+		}
+	}
+	s.statsMap[key] = append(keep, entry)
+	s.statsMu.Unlock()
+}
+
+// TrafficStats returns the per-second packet rate and throughput (Mbps) for
+// a given pod+interface averaged over a 2-second sliding window.
+// Returns (0, 0) when no data has been received yet.
+func (s *Server) TrafficStats(pod, iface string) (pps, throughputMbps float64) {
+	const window = 2.0
+	key := wildcardKey{PodName: pod, Iface: iface}
+	cutoff := time.Now().Add(-time.Duration(window * float64(time.Second)))
+
+	s.statsMu.Lock()
+	entries := s.statsMap[key]
+	var totalPkts int
+	var totalBytes int64
+	for _, e := range entries {
+		if e.ts.After(cutoff) {
+			totalPkts += e.pkts
+			totalBytes += e.bytes
+		}
+	}
+	s.statsMu.Unlock()
+
+	if totalPkts == 0 {
+		return 0, 0
+	}
+	pps = float64(totalPkts) / window
+	throughputMbps = float64(totalBytes) * 8 / 1e6 / window
+	return
 }
 
 // RegisterWildcardSubscriber subscribes to all packets for pod+iface, any node.
@@ -106,6 +169,7 @@ func (s *Server) RegisterSubscriber(key SessionKey) (Subscriber, func()) {
 }
 
 // publish sends a packet batch to exact-key subscribers AND wildcard (pod+iface) subscribers.
+// Also records traffic stats for the interface metrics endpoint.
 func (s *Server) publish(key SessionKey, pkts []Packet) {
 	wKey := wildcardKey{PodName: key.PodName, Iface: key.Iface}
 	s.mu.RLock()
@@ -119,6 +183,9 @@ func (s *Server) publish(key SessionKey, pkts []Packet) {
 	for _, sub := range wSubs {
 		select { case sub <- pkts: default: }
 	}
+
+	// Record in sliding-window stats for TrafficStats queries
+	s.recordStats(wKey, pkts)
 }
 
 // StreamPackets receives packet batches from a capture-agent (client-streaming).

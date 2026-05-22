@@ -176,36 +176,27 @@ func (c *Client) NodeMetrics(ctx context.Context) (map[string]NodeMetric, error)
 	return result, nil
 }
 
-// ─── Interface metrics ────────────────────────────────────────────────────────
+// ─── Interface drop rate (Hubble/Cilium) ──────────────────────────────────────
 
-type InterfaceMetrics struct {
-	ThroughputMbps float64 `json:"throughputMbps"`
-	PacketsPerSec  float64 `json:"packetsPerSec"`
-	DropRate       float64 `json:"dropRate"`
-}
-
-// InterfaceMetrics queries per-interface throughput, pps, and drop rate.
-// nodeIP must match the node_exporter instance label prefix (e.g. "192.168.18.211").
-func (c *Client) InterfaceMetrics(ctx context.Context, iface, nodeIP string) (*InterfaceMetrics, error) {
-	if nodeIP == "" || iface == "" {
-		return &InterfaceMetrics{}, nil
+// InterfaceDropRate returns the Cilium/Hubble drop rate (%) for a given pod.
+// Uses hubble_drop_total / hubble_flows_processed_total from Prometheus.
+// Returns 0.0 when Hubble metrics are unavailable or the pod has no drops.
+func (c *Client) InterfaceDropRate(ctx context.Context, pod string) float64 {
+	if pod == "" {
+		return 0
 	}
-
-	nodePattern := nodeIP + ":.*"
-
-	txBytesQ  := fmt.Sprintf(`rate(node_network_transmit_bytes_total{device=%q,instance=~%q}[30s]) * 8 / 1e6`, iface, nodePattern)
-	txPktsQ   := fmt.Sprintf(`rate(node_network_transmit_packets_total{device=%q,instance=~%q}[30s])`, iface, nodePattern)
-	txErrsQ   := fmt.Sprintf(`rate(node_network_transmit_errs_total{device=%q,instance=~%q}[30s]) / clamp_min(rate(node_network_transmit_packets_total{device=%q,instance=~%q}[30s]), 1) * 100`, iface, nodePattern, iface, nodePattern)
-
-	throughput, _ := c.queryScalar(ctx, txBytesQ)
-	pps, _        := c.queryScalar(ctx, txPktsQ)
-	drop, _       := c.queryScalar(ctx, txErrsQ)
-
-	return &InterfaceMetrics{
-		ThroughputMbps: round2(throughput),
-		PacketsPerSec:  round1(pps),
-		DropRate:       round2(drop),
-	}, nil
+	podPattern := ".*" + pod + ".*"
+	// Hubble labels source/destination as "namespace/podname" — broad regex match
+	dropQ := fmt.Sprintf(
+		`sum(rate(hubble_drop_total{source=~%q}[30s])) /`+
+			` clamp_min(sum(rate(hubble_flows_processed_total{source=~%q}[30s])), 0.001) * 100`,
+		podPattern, podPattern,
+	)
+	drop, _ := c.queryScalar(ctx, dropQ)
+	if drop < 0 {
+		drop = 0
+	}
+	return round2(drop)
 }
 
 // NodePodCounts returns pod counts keyed by k8s node name.
