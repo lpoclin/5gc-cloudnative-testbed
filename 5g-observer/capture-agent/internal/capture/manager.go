@@ -141,6 +141,7 @@ func (m *Manager) runCapture(ctx context.Context, key sessionKey, pod discovery.
 				Protocol:    fields["protocol"],
 				Length:      uint32(length),
 				Info:        fields["info"],
+				Raw:         result.RawBytes,
 			}
 			sess.ring.Push(raw)
 
@@ -153,6 +154,7 @@ func (m *Manager) runCapture(ctx context.Context, key sessionKey, pod discovery.
 				Protocol:      raw.Protocol,
 				Length:        raw.Length,
 				Info:          raw.Info,
+				Raw:           raw.Raw,
 				InterfaceName: key.iface,
 				PodName:       pod.Name,
 				Namespace:     pod.Namespace,

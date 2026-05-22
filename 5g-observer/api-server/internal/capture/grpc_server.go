@@ -54,6 +54,68 @@ type statEntry struct {
 	bytes int64
 }
 
+// PktEntry stores the raw bytes and timestamp for a single captured packet.
+type PktEntry struct {
+	TsNs int64
+	Raw  []byte
+}
+
+// pktRingBuf is a fixed-capacity circular buffer of PktEntry, one per pod+interface.
+type pktRingBuf struct {
+	mu       sync.RWMutex
+	entries  []PktEntry
+	head     int
+	size     int
+	capacity int
+	linkType uint32 // pcap link-layer type (1 = Ethernet, default)
+}
+
+func newPktRingBuf(cap int) *pktRingBuf {
+	return &pktRingBuf{entries: make([]PktEntry, cap), capacity: cap, linkType: 1}
+}
+
+func (r *pktRingBuf) push(e PktEntry) {
+	r.mu.Lock()
+	r.entries[r.head] = e
+	r.head = (r.head + 1) % r.capacity
+	if r.size < r.capacity {
+		r.size++
+	}
+	r.mu.Unlock()
+}
+
+// getByTs returns the raw bytes for the packet with the given nanosecond timestamp.
+func (r *pktRingBuf) getByTs(tsNs int64) ([]byte, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for i := 0; i < r.size; i++ {
+		idx := (r.head - 1 - i + r.capacity) % r.capacity
+		if r.entries[idx].TsNs == tsNs {
+			out := make([]byte, len(r.entries[idx].Raw))
+			copy(out, r.entries[idx].Raw)
+			return out, true
+		}
+	}
+	return nil, false
+}
+
+// getAfterTs returns all packets with tsNs >= cutoffNs, in insertion order.
+func (r *pktRingBuf) getAfterTs(cutoffNs int64) []PktEntry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []PktEntry
+	for i := r.size - 1; i >= 0; i-- {
+		idx := (r.head - 1 - i + r.capacity) % r.capacity
+		if r.entries[idx].TsNs >= cutoffNs {
+			e := r.entries[idx]
+			cp := make([]byte, len(e.Raw))
+			copy(cp, e.Raw)
+			out = append(out, PktEntry{TsNs: e.TsNs, Raw: cp})
+		}
+	}
+	return out
+}
+
 // Server implements pb.CaptureServiceServer and fans packets to subscribers.
 type Server struct {
 	pb.UnimplementedCaptureServiceServer
@@ -64,13 +126,20 @@ type Server struct {
 	// Rolling traffic stats — 3-second sliding window, keyed by pod+interface
 	statsMu  sync.Mutex
 	statsMap map[wildcardKey][]statEntry
+
+	// Packet ring buffer for decode queries (stores raw bytes, keyed by pod+interface)
+	pktRingMu sync.RWMutex
+	pktRings  map[wildcardKey]*pktRingBuf
 }
+
+const pktRingCap = 5_000
 
 func NewServer() *Server {
 	return &Server{
 		subs:         make(map[SessionKey][]Subscriber),
 		wildcardSubs: make(map[wildcardKey][]Subscriber),
 		statsMap:     make(map[wildcardKey][]statEntry),
+		pktRings:     make(map[wildcardKey]*pktRingBuf),
 	}
 }
 
@@ -186,6 +255,49 @@ func (s *Server) publish(key SessionKey, pkts []Packet) {
 
 	// Record in sliding-window stats for TrafficStats queries
 	s.recordStats(wKey, pkts)
+
+	// Store raw bytes in the per-pod ring buffer for decode queries
+	if len(pkts) > 0 {
+		s.pktRingMu.Lock()
+		ring, ok := s.pktRings[wKey]
+		if !ok {
+			ring = newPktRingBuf(pktRingCap)
+			s.pktRings[wKey] = ring
+		}
+		s.pktRingMu.Unlock()
+
+		for _, p := range pkts {
+			if len(p.Raw) > 0 {
+				ring.push(PktEntry{TsNs: p.TimestampNs, Raw: p.Raw})
+			}
+		}
+	}
+}
+
+// GetRawByTs returns the raw packet bytes and pcap linktype for the packet
+// with the given nanosecond timestamp for the specified pod+interface.
+func (s *Server) GetRawByTs(pod, iface string, tsNs int64) (raw []byte, linkType uint32, ok bool) {
+	key := wildcardKey{PodName: pod, Iface: iface}
+	s.pktRingMu.RLock()
+	ring, exists := s.pktRings[key]
+	s.pktRingMu.RUnlock()
+	if !exists {
+		return nil, 1, false
+	}
+	raw, ok = ring.getByTs(tsNs)
+	return raw, ring.linkType, ok
+}
+
+// GetPacketsAfterTs returns all raw packets with tsNs >= cutoffNs for export.
+func (s *Server) GetPacketsAfterTs(pod, iface string, cutoffNs int64) ([]PktEntry, uint32) {
+	key := wildcardKey{PodName: pod, Iface: iface}
+	s.pktRingMu.RLock()
+	ring, exists := s.pktRings[key]
+	s.pktRingMu.RUnlock()
+	if !exists {
+		return nil, 1
+	}
+	return ring.getAfterTs(cutoffNs), ring.linkType
 }
 
 // StreamPackets receives packet batches from a capture-agent (client-streaming).

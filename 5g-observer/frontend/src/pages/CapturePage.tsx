@@ -460,62 +460,212 @@ function DecodeTree({ pkt, startNs }: { pkt: LivePacket; startNs: number }) {
   )
 }
 
-// ─── Hex dump panel ───────────────────────────────────────────────────────────
+// ─── sharkd protocol tree ─────────────────────────────────────────────────────
 
-function HexPanel({ rawHex }: { rawHex?: string }) {
-  if (!rawHex) {
+interface SharkdTreeNode {
+  l:  string           // label (display string)
+  t?: string           // type: 'proto' | 'url' | 'framenum' | ...
+  f?: string           // Wireshark filter name (e.g. 'ip.src')
+  s?: number           // severity
+  h?: [number, number] // [start_byte, length] byte range
+  e?: SharkdTreeNode[] // children
+}
+
+interface DecodeApiResponse {
+  sharkd:  boolean
+  result?: { tree: SharkdTreeNode[]; bytes: string }
+  bytes?:  string  // raw hex when sharkd=false but bytes available
+  error?:  string
+}
+
+/** Map filter-name prefix → layer color */
+function nodeLayerColor(f?: string): string {
+  if (!f) return '#8b949e'
+  if (f === 'frame' || f.startsWith('frame.'))              return '#8b949e'
+  if (f === 'eth'   || f.startsWith('eth.'))                return '#58a6ff'
+  if (f === 'ip'    || f.startsWith('ip.')    ||
+      f === 'ipv6'  || f.startsWith('ipv6.'))               return '#3fb950'
+  if (f === 'tcp'   || f.startsWith('tcp.'))                return '#f97316'
+  if (f === 'udp'   || f.startsWith('udp.'))                return '#f97316'
+  if (f === 'sctp'  || f.startsWith('sctp.'))               return '#eab308'
+  if (f === 'gtp'   || f.startsWith('gtp.')   ||
+      f === 'gtp2'  || f.startsWith('gtp2.'))               return '#22c55e'
+  if (f === 'pfcp'  || f.startsWith('pfcp.'))               return '#a855f7'
+  if (f === 'http2' || f.startsWith('http2.') ||
+      f === 'http'  || f.startsWith('http.'))               return '#06b6d4'
+  if (f === 'nas_5gs' || f.startsWith('nas_5gs.') ||
+      f === 'nas_eps' || f.startsWith('nas_eps.'))          return '#f43f5e'
+  if (f === 'ngap'  || f.startsWith('ngap.')  ||
+      f === 's1ap'  || f.startsWith('s1ap.'))               return '#fb923c'
+  if (f === 'dns'   || f.startsWith('dns.'))                return '#34d399'
+  return '#8b949e'
+}
+
+function SharkdNodeItem({
+  node, depth, onFieldClick,
+}: {
+  node: SharkdTreeNode
+  depth: number
+  onFieldClick: (range: [number, number]) => void
+}) {
+  const hasChildren = (node.e?.length ?? 0) > 0
+  const isProtoLayer = node.t === 'proto' || depth === 0
+
+  // Top-level layers: collapse frame/eth/ip by default; expand transport+app
+  const shouldOpenDefault = () => {
+    if (depth !== 0) return true
+    const f = (node.f ?? '').toLowerCase()
+    return !['frame', 'eth', 'ip', 'ipv6', 'arp'].includes(f)
+  }
+  const [open, setOpen] = useState(shouldOpenDefault)
+
+  const color = isProtoLayer ? nodeLayerColor(node.f) : '#e6edf3'
+  const indent = depth * 12
+
+  return (
+    <div>
+      <div
+        onClick={() => {
+          if (hasChildren) setOpen(v => !v)
+          if (node.h) onFieldClick(node.h)
+        }}
+        title={node.f ?? undefined}
+        className="flex items-start py-px hover:bg-white/5 cursor-pointer select-text text-[11px]"
+        style={{ paddingLeft: 8 + indent }}
+      >
+        <span className="shrink-0 mr-1.5 mt-px text-[9px]" style={{ color: '#58a6ff', minWidth: 8 }}>
+          {hasChildren ? (open ? '▼' : '▶') : ''}
+        </span>
+        <span style={{ color, fontWeight: isProtoLayer ? 'bold' : 'normal', fontFamily: 'JetBrains Mono, monospace' }}>
+          {node.l}
+        </span>
+      </div>
+      {hasChildren && open && (
+        <SharkdSubTree nodes={node.e!} depth={depth + 1} onFieldClick={onFieldClick} />
+      )}
+    </div>
+  )
+}
+
+function SharkdSubTree({ nodes, depth, onFieldClick }: {
+  nodes: SharkdTreeNode[]; depth: number; onFieldClick: (r: [number, number]) => void
+}) {
+  return (
+    <>
+      {nodes.map((n, i) => (
+        <SharkdNodeItem key={i} node={n} depth={depth} onFieldClick={onFieldClick} />
+      ))}
+    </>
+  )
+}
+
+// ─── Hex dump panel (with optional byte-range highlight) ─────────────────────
+
+function HexPanel({
+  hexStr, highlight,
+}: {
+  hexStr?: string
+  highlight?: [number, number] | null  // [start_byte, length]
+}) {
+  if (!hexStr) {
     return (
       <div className="flex items-center justify-center h-full text-[11px] font-mono text-center px-4"
         style={{ color: '#6e7681', background: '#010409' }}>
         <div className="space-y-1">
           <div style={{ color: '#30363d', fontSize: 20 }}>⬡</div>
           <div>Raw bytes not available from tshark output</div>
+          <div className="text-[10px]" style={{ color: '#30363d' }}>
+            Upgrade api-server image to include tshark for sharkd decode
+          </div>
         </div>
       </div>
     )
   }
 
-  // Format hex dump: 16 bytes per row, offset | hex (gap at byte 8) | ASCII
   const bytes: number[] = []
-  for (let i = 0; i < rawHex.length; i += 2) {
-    bytes.push(parseInt(rawHex.slice(i, i + 2), 16))
+  for (let i = 0; i < hexStr.length; i += 2) {
+    bytes.push(parseInt(hexStr.slice(i, i + 2), 16))
   }
 
-  const rows = []
+  const hl = highlight  // [startByte, length]
+
+  const rows: { offset: string; chunks: { hex: string; idx: number }[]; ascii: { ch: string; idx: number }[] }[] = []
   for (let i = 0; i < bytes.length; i += 16) {
     const chunk = bytes.slice(i, i + 16)
-    const hex   = chunk.map((b, j) => b.toString(16).padStart(2, '0') + (j === 7 ? '  ' : ' ')).join('').trimEnd()
-    const ascii = chunk.map(b => (b >= 0x20 && b < 0x7f) ? String.fromCharCode(b) : '.').join('')
-    rows.push({ offset: i.toString(16).padStart(4, '0'), hex, ascii })
+    rows.push({
+      offset: i.toString(16).padStart(4, '0'),
+      chunks: chunk.map((b, j) => ({ hex: b.toString(16).padStart(2, '0') + (j === 7 ? '  ' : ' '), idx: i + j })),
+      ascii:  chunk.map((b, j) => ({ ch: (b >= 0x20 && b < 0x7f) ? String.fromCharCode(b) : '.', idx: i + j })),
+    })
   }
+
+  const inHl = (idx: number) =>
+    hl != null && idx >= hl[0] && idx < hl[0] + hl[1]
 
   return (
     <div className="overflow-y-auto h-full text-[11px] font-mono" style={{ background: '#010409' }}>
       {rows.map(r => (
-        <div key={r.offset} className="flex gap-3 px-3 py-px hover:bg-white/5 leading-5 select-text whitespace-nowrap">
+        <div key={r.offset}
+          className="flex gap-3 px-3 py-px hover:bg-white/5 leading-5 whitespace-nowrap">
           <span style={{ color: '#6e7681', userSelect: 'none' }}>{r.offset}</span>
-          <span style={{ color: '#79c0ff', letterSpacing: '0.03em' }}>{r.hex}</span>
-          <span style={{ color: '#56d364' }}>{r.ascii}</span>
+          <span style={{ letterSpacing: '0.03em' }}>
+            {r.chunks.map(c => (
+              <span key={c.idx}
+                style={{ color: inHl(c.idx) ? '#e6edf3' : '#79c0ff',
+                  background: inHl(c.idx) ? 'rgba(88,166,255,0.4)' : undefined }}>
+                {c.hex}
+              </span>
+            ))}
+          </span>
+          <span>
+            {r.ascii.map(a => (
+              <span key={a.idx}
+                style={{ color: inHl(a.idx) ? '#e6edf3' : '#56d364',
+                  background: inHl(a.idx) ? 'rgba(88,166,255,0.4)' : undefined }}>
+                {a.ch}
+              </span>
+            ))}
+          </span>
         </div>
       ))}
     </div>
   )
 }
 
-// ─── Decode panel container (resizable height + split tree/hex) ────────────────
+// ─── Decode panel container (resizable height + split tree/hex + sharkd fetch) ──
 
 function DecodePanel({
   pkt, startNs, onClose,
 }: {
   pkt: LivePacket; startNs: number; onClose: () => void
 }) {
-  const [panelH,   setPanelH]   = useState(300)
-  const [splitPct, setSplitPct] = useState(55)   // tree takes 55% of panel width
+  const [panelH,    setPanelH]    = useState(300)
+  const [splitPct,  setSplitPct]  = useState(55)
+  const [decodeData, setDecodeData] = useState<DecodeApiResponse | null>(null)
+  const [loading,   setLoading]   = useState(false)
+  const [highlight, setHighlight] = useState<[number, number] | null>(null)
   const hRef       = useRef<{ y0: number; h0: number } | null>(null)
   const sRef       = useRef<{ x0: number; pct0: number; w: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Panel height resize (drag top border)
+  // Fetch sharkd decode whenever the selected packet (by ts) changes
+  useEffect(() => {
+    if (!pkt.pod || !pkt.iface || !pkt.ts) return
+    let cancelled = false
+    setLoading(true)
+    setDecodeData(null)
+    setHighlight(null)
+
+    const url = `/api/packet/decode?pod=${encodeURIComponent(pkt.pod)}&interface=${encodeURIComponent(pkt.iface)}&ts=${pkt.ts}`
+    fetch(url)
+      .then(r => r.json() as Promise<DecodeApiResponse>)
+      .then(d => { if (!cancelled) { setDecodeData(d); setLoading(false) } })
+      .catch(() => { if (!cancelled) setLoading(false) })
+
+    return () => { cancelled = true }
+  }, [pkt.ts, pkt.pod, pkt.iface])
+
+  // Panel height resize
   useEffect(() => {
     const mv = (e: MouseEvent) => {
       if (!hRef.current) return
@@ -542,6 +692,15 @@ function DecodePanel({
     return () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up) }
   }, [])
 
+  // Determine tree + hex content
+  const useSharkd  = decodeData?.sharkd && decodeData.result != null
+  const hexStr     = useSharkd ? decodeData!.result!.bytes : (decodeData?.bytes ?? pkt.rawHex)
+  const sharkdBadge = useSharkd
+    ? <span className="text-[9px] px-1 rounded" style={{ background: '#1a3f1a', color: '#3fb950', border: '1px solid #2ea043' }}>sharkd</span>
+    : decodeData && !decodeData.sharkd
+      ? <span className="text-[9px] px-1 rounded" style={{ background: '#2a1a0a', color: '#d29922', border: '1px solid #9a6700' }}>basic decode</span>
+      : null
+
   return (
     <div className="shrink-0 flex flex-col" style={{ height: panelH + 28, background: '#0d1117' }}>
       {/* Drag handle / header */}
@@ -552,11 +711,15 @@ function DecodePanel({
         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderTopColor = '#388bfd' }}
         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderTopColor = '#30363d' }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold" style={{ color: '#58a6ff' }}>PACKET DECODE</span>
           <span className="text-[10px]" style={{ color: '#6e7681' }}>
             Frame {pkt.no} — {pkt.protocol} — {pkt.length} bytes — {fmtArrival(pkt.ts)}
           </span>
+          {sharkdBadge}
+          {loading && (
+            <span className="text-[9px] animate-pulse" style={{ color: '#8b949e' }}>fetching…</span>
+          )}
         </div>
         <button
           onClick={e => { e.stopPropagation(); onClose() }}
@@ -570,8 +733,26 @@ function DecodePanel({
 
       {/* Tree | divider | hex */}
       <div ref={containerRef} className="flex flex-1 min-h-0 overflow-hidden">
+
+        {/* Protocol tree — sharkd or fallback */}
         <div style={{ width: `${splitPct}%`, minWidth: 0, overflow: 'hidden' }}>
-          <DecodeTree pkt={pkt} startNs={startNs} />
+          {loading ? (
+            <div className="flex items-center justify-center h-full text-[11px] animate-pulse"
+              style={{ color: '#8b949e', background: '#0d1117' }}>
+              Waiting for sharkd…
+            </div>
+          ) : useSharkd ? (
+            <div className="overflow-y-auto h-full" style={{ background: '#0d1117' }}>
+              <SharkdSubTree
+                nodes={decodeData!.result!.tree}
+                depth={0}
+                onFieldClick={r => setHighlight(r)}
+              />
+            </div>
+          ) : (
+            /* Fallback: info-string based tree */
+            <DecodeTree pkt={pkt} startNs={startNs} />
+          )}
         </div>
 
         {/* Draggable vertical divider */}
@@ -580,18 +761,15 @@ function DecodePanel({
           style={{ width: 4, background: '#30363d' }}
           onMouseDown={e => {
             e.preventDefault()
-            sRef.current = {
-              x0: e.clientX,
-              pct0: splitPct,
-              w: containerRef.current?.clientWidth ?? 800,
-            }
+            sRef.current = { x0: e.clientX, pct0: splitPct, w: containerRef.current?.clientWidth ?? 800 }
           }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#58a6ff' }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#30363d' }}
         />
 
+        {/* Hex dump */}
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-          <HexPanel rawHex={pkt.rawHex} />
+          <HexPanel hexStr={hexStr} highlight={highlight} />
         </div>
       </div>
     </div>
@@ -847,11 +1025,23 @@ export default function CapturePage() {
         {/* CENTER — export */}
         <div className="flex items-center gap-1">
           {(['30s', '5min', '1h'] as const).map(lbl => (
-            <button key={lbl} className="px-1.5 py-1 rounded text-xs"
-              style={{ background: '#21262d', color: '#8b949e', border: '1px solid #30363d' }}
-              title="pcap export coming soon">
+            <a
+              key={lbl}
+              href={pod && iface
+                ? `/api/packets/export?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}&duration=${lbl}`
+                : undefined}
+              download
+              className="px-1.5 py-1 rounded text-xs"
+              style={{
+                background: '#21262d', color: pod ? '#8b949e' : '#4a4a4a',
+                border: '1px solid #30363d', textDecoration: 'none',
+                cursor: pod ? 'pointer' : 'not-allowed',
+                pointerEvents: pod ? 'auto' : 'none',
+              }}
+              title={pod ? `Download pcap — last ${lbl}` : 'Select NF first'}
+            >
               ⬇ {lbl}
-            </button>
+            </a>
           ))}
         </div>
 

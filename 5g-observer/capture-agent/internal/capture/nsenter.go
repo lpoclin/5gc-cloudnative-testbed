@@ -3,7 +3,9 @@ package capture
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,9 +67,10 @@ func findPodPID(podUID, containerID string) (int, error) {
 	return 0, fmt.Errorf("no PID found for pod UID %s", podUID)
 }
 
-// CaptureResult is a decoded packet line from tshark.
+// CaptureResult is a decoded packet line from tshark with raw frame bytes.
 type CaptureResult struct {
-	Line string
+	Line     string
+	RawBytes []byte // raw Ethernet/IP frame bytes for sharkd decode; nil if unavailable
 }
 
 // RunCapture starts tcpdump | tshark in the pod network namespace.
@@ -140,13 +143,13 @@ func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan 
 		tshark := exec.CommandContext(ctx, tsharkBin, tsharkArgs...)
 		tshark.Env = append(os.Environ())
 
-		// Pipe tcpdump stdout → tshark stdin
-		pipe, err := tcpdump.StdoutPipe()
+		// tcpdump stdout → TeeReader → tshark stdin (fields text)
+		//                            └→ pcapPipeW → pcapPipeR → parsePcapFrames (raw bytes)
+		tcpdumpStdout, err := tcpdump.StdoutPipe()
 		if err != nil {
 			log.Error().Err(err).Msg("tcpdump stdout pipe")
 			return
 		}
-		tshark.Stdin = pipe
 
 		tsharkOut, err := tshark.StdoutPipe()
 		if err != nil {
@@ -154,19 +157,34 @@ func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan 
 			return
 		}
 
+		// Split the raw pcap stream: one copy goes to tshark, another to pcap frame parser
+		pcapPipeR, pcapPipeW := io.Pipe()
+		teeR := io.TeeReader(tcpdumpStdout, pcapPipeW)
+		tshark.Stdin = teeR
+
+		rawCh := make(chan []byte, 512)
+		go func() {
+			defer close(rawCh)
+			defer pcapPipeR.Close()
+			parsePcapFrames(pcapPipeR, rawCh)
+		}()
+
 		if err := tcpdump.Start(); err != nil {
 			log.Error().Err(err).Str("iface", iface).Msg("tcpdump start")
+			pcapPipeW.Close()
 			return
 		}
 		if err := tshark.Start(); err != nil {
 			log.Error().Err(err).Str("iface", iface).Msg("tshark start")
 			tcpdump.Process.Kill()
+			pcapPipeW.Close()
 			return
 		}
 
 		defer func() {
 			tcpdump.Process.Kill()
 			tshark.Process.Kill()
+			pcapPipeW.Close() // unblocks parsePcapFrames
 			tcpdump.Wait()
 			tshark.Wait()
 		}()
@@ -174,10 +192,20 @@ func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan 
 		scanner := bufio.NewScanner(tsharkOut)
 		scanner.Buffer(make([]byte, 64*1024), 64*1024)
 		for scanner.Scan() {
+			// Receive raw bytes for this frame (same sequential order as tshark output)
+			var rawBytes []byte
 			select {
 			case <-ctx.Done():
 				return
-			case ch <- CaptureResult{Line: scanner.Text()}:
+			case rb, ok := <-rawCh:
+				if ok {
+					rawBytes = rb
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- CaptureResult{Line: scanner.Text(), RawBytes: rawBytes}:
 			}
 		}
 	}()
@@ -210,6 +238,49 @@ func ParseTsharkLine(line string) (map[string]string, bool) {
 		"length":   parts[8],
 		"info":     strings.Join(parts[9:], "|"),
 	}, true
+}
+
+// parsePcapFrames reads a libpcap byte stream and sends raw packet bytes for
+// each frame on rawCh.  Called in a goroutine alongside the tshark text parser;
+// frames appear in the same sequential order as tshark output lines.
+func parsePcapFrames(r io.Reader, rawCh chan<- []byte) {
+	// pcap global header: 24 bytes
+	// magic(4) versionMajor(2) versionMinor(2) thiszone(4) sigfigs(4) snaplen(4) network(4)
+	var magic [4]byte
+	if _, err := io.ReadFull(r, magic[:]); err != nil {
+		return
+	}
+	magicNum := binary.LittleEndian.Uint32(magic[:])
+	bigEndian := magicNum == 0xd4c3b2a1 || magicNum == 0x4d3cb2a1
+	if magicNum != 0xa1b2c3d4 && magicNum != 0xa1b23c4d && !bigEndian {
+		log.Warn().Uint32("magic", magicNum).Msg("pcap: unrecognized magic, skipping raw bytes")
+		return
+	}
+
+	// Discard remaining 20 bytes of global header
+	var rest [20]byte
+	if _, err := io.ReadFull(r, rest[:]); err != nil {
+		return
+	}
+
+	// Per-packet record: ts_sec(4) ts_usec(4) incl_len(4) orig_len(4) + data
+	var hdr [16]byte
+	for {
+		if _, err := io.ReadFull(r, hdr[:]); err != nil {
+			return
+		}
+		var inclLen uint32
+		if bigEndian {
+			inclLen = binary.BigEndian.Uint32(hdr[8:12])
+		} else {
+			inclLen = binary.LittleEndian.Uint32(hdr[8:12])
+		}
+		data := make([]byte, inclLen)
+		if _, err := io.ReadFull(r, data); err != nil {
+			return
+		}
+		rawCh <- data
+	}
 }
 
 func normalizeProtocol(p string) string {
