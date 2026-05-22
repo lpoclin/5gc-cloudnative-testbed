@@ -41,7 +41,7 @@ spec:
             - name: API_SERVER_ADDR
               value: "observer-api:9999"
             - name: TARGET_NAMESPACES
-              value: {{ .Values.targets | map (index . "namespace") | join "," | quote }}
+              value: "{{ range $i, $t := .Values.targets }}{{ if $i }},{{ end }}{{ $t.namespace }}{{ end }}"
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

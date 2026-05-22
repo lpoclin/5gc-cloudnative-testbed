@@ -44,7 +44,7 @@ spec:
             - name: HUBBLE_ADDRESS
               value: {{ .Values.hubble.address | quote }}
             - name: TARGET_NAMESPACES
-              value: {{ .Values.targets | map (index . "namespace") | join "," | quote }}
+              value: "{{ range $i, $t := .Values.targets }}{{ if $i }},{{ end }}{{ $t.namespace }}{{ end }}"
             {{- if .Values.terminal.enabled }}
             - name: SSH_HOST
               value: {{ .Values.terminal.sshHost | quote }}
