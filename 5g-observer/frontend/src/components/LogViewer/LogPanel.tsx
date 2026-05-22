@@ -78,8 +78,8 @@ export default function LogPanel({
               className="flex items-baseline gap-2 px-2 hover:bg-bg-hover/40 text-xs font-mono"
             >
               {showTimestamps && (
-                <span className="text-slate-600 shrink-0 text-[10px]">
-                  {line.timestamp.slice(11, 23)}
+                <span className="text-slate-600 shrink-0 text-[10px] font-mono">
+                  {line.timestamp.slice(11, 19)}
                 </span>
               )}
               <span className={clsx(

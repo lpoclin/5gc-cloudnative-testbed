@@ -1,31 +1,84 @@
-import { useState, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import TopologyCanvas from '@/components/Topology/TopologyCanvas'
 import SidePanel from '@/components/Topology/SidePanel'
 import TerminalPanel from '@/components/Terminal/TerminalPanel'
 import { TopologySkeleton } from '@/components/common/LoadingSkeleton'
 import { useToast } from '@/components/common/Toast'
 import { IconRefresh } from '@/components/common/icons'
-import { api } from '@/services/api'
 import { useTopology } from '@/hooks/useTopology'
 import type { TopologyNode, TopologyEdge } from '@/types/topology'
+
+// multi-namespace support planned for v0.2
+const namespace = 'free5gc'
+
+const SIDE_MIN = 250
+const SIDE_MAX = 600
+const SIDE_DEFAULT = 350
+const TERM_MIN = 150
+const TERM_MAX = 500
+const TERM_DEFAULT = 280
+
+function getSaved(key: string, def: number): number {
+  try { const v = Number(localStorage.getItem(key)); return isNaN(v) ? def : Math.max(def - def, v) } catch { return def }
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TopologyPage() {
-  const [namespace, setNamespace]     = useState('free5gc')
   const [selectedNode, setSelectedNode] = useState<TopologyNode | null>(null)
   const [sidePanelOpen, setSidePanelOpen] = useState(false)
   const [termOpen, setTermOpen]       = useState(false)
+  const [sideWidth,   setSideWidth]   = useState(() => getSaved('5g-observer-sidepanel-width', SIDE_DEFAULT))
+  const [termHeight,  setTermHeight]  = useState(() => getSaved('5g-observer-terminal-height', TERM_DEFAULT))
   const { push } = useToast()
 
-  const { data: graph, isLoading, isError, refetch } = useTopology(namespace)
+  // ── Side panel drag ────────────────────────────────────────────────────────
+  const sideDragStart = useRef<{ x: number; w: number } | null>(null)
+  const onSideMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    sideDragStart.current = { x: e.clientX, w: sideWidth }
+  }, [sideWidth])
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!sideDragStart.current) return
+      const delta = sideDragStart.current.x - e.clientX   // dragging left handle: move left → wider
+      const next  = Math.min(SIDE_MAX, Math.max(SIDE_MIN, sideDragStart.current.w + delta))
+      setSideWidth(next)
+    }
+    const onUp = () => {
+      if (!sideDragStart.current) return
+      try { localStorage.setItem('5g-observer-sidepanel-width', String(sideWidth)) } catch { /* ok */ }
+      sideDragStart.current = null
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [sideWidth])
 
-  const { data: namespaces = ['free5gc'] } = useQuery({
-    queryKey: ['namespaces'],
-    queryFn: api.topology.namespaces,
-    staleTime: 60_000,
-  })
+  // ── Terminal panel drag ────────────────────────────────────────────────────
+  const termDragStart = useRef<{ y: number; h: number } | null>(null)
+  const onTermMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    termDragStart.current = { y: e.clientY, h: termHeight }
+  }, [termHeight])
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!termDragStart.current) return
+      const delta = termDragStart.current.y - e.clientY   // drag up → taller
+      const next  = Math.min(TERM_MAX, Math.max(TERM_MIN, termDragStart.current.h + delta))
+      setTermHeight(next)
+    }
+    const onUp = () => {
+      if (!termDragStart.current) return
+      try { localStorage.setItem('5g-observer-terminal-height', String(termHeight)) } catch { /* ok */ }
+      termDragStart.current = null
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [termHeight])
+
+  const { data: graph, isLoading, isError, refetch } = useTopology(namespace)
 
   const handleNodeClick = useCallback((node: TopologyNode) => {
     setSelectedNode(node)
@@ -52,16 +105,12 @@ export default function TopologyPage() {
         style={{ borderBottom: '1px solid #30363d', background: '#161b22' }}
       >
         <span className="text-xs shrink-0" style={{ color: '#8b949e' }}>Namespace</span>
-        <select
-          value={namespace}
-          onChange={e => setNamespace(e.target.value)}
-          className="rounded px-2 py-1 text-sm outline-none"
+        <span
+          className="rounded px-2 py-1 text-sm font-mono"
           style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }}
         >
-          {namespaces.map(ns => (
-            <option key={ns} value={ns}>{ns}</option>
-          ))}
-        </select>
+          {namespace}
+        </span>
 
         <div className="flex-1" />
 
@@ -118,23 +167,48 @@ export default function TopologyPage() {
           )}
         </div>
 
-        {/* Side panel */}
+        {/* Side panel with drag handle */}
         {sidePanelOpen && selectedNode && graph && (
           <div
-            className="w-[440px] shrink-0 h-full"
-            style={{ borderLeft: '1px solid #30363d' }}
+            className="shrink-0 h-full flex"
+            style={{ width: sideWidth, borderLeft: '1px solid #30363d' }}
           >
-            <SidePanel
-              node={selectedNode}
-              allNodes={graph.nodes}
-              onClose={handleClosePanel}
+            {/* Drag handle — left border */}
+            <div
+              onMouseDown={onSideMouseDown}
+              className="w-1 shrink-0 cursor-ew-resize transition-colors"
+              style={{ background: '#30363d' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#58a6ff' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#30363d' }}
             />
+            <div className="flex-1 min-w-0 h-full overflow-hidden">
+              <SidePanel
+                node={selectedNode}
+                allNodes={graph.nodes}
+                onClose={handleClosePanel}
+              />
+            </div>
           </div>
         )}
       </div>
 
-      {/* Collapsible terminal panel */}
-      <TerminalPanel open={termOpen} onToggle={() => setTermOpen(v => !v)} />
+      {/* Collapsible terminal panel with drag handle */}
+      <div className="shrink-0">
+        {termOpen && (
+          <div
+            onMouseDown={onTermMouseDown}
+            className="w-full cursor-ns-resize transition-colors"
+            style={{ height: 4, background: '#30363d' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#58a6ff' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#30363d' }}
+          />
+        )}
+        <TerminalPanel
+          open={termOpen}
+          onToggle={() => setTermOpen(v => !v)}
+          height={termHeight}
+        />
+      </div>
     </div>
   )
 }

@@ -305,9 +305,10 @@ function TerminalInstance({ tabId, active, panelOpen, onConnected, onDisconnecte
 export interface TerminalPanelProps {
   open: boolean
   onToggle: () => void
+  height?: number   // controlled by parent drag handle
 }
 
-export default function TerminalPanel({ open, onToggle }: TerminalPanelProps) {
+export default function TerminalPanel({ open, onToggle, height = 260 }: TerminalPanelProps) {
   const [tabs, setTabs] = useState<TabDef[]>([{ id: _nextId++, label: 'Terminal 1', connected: false }])
   const [activeId, setActiveId] = useState<number>(tabs[0].id)
 
@@ -352,7 +353,7 @@ export default function TerminalPanel({ open, onToggle }: TerminalPanelProps) {
   return (
     <div
       className="shrink-0 flex flex-col"
-      style={{ borderTop: '1px solid #30363d', background: '#0d1117' }}
+      style={{ background: '#0d1117' }}
     >
       {/* ── Header bar ─────────────────────────────────────────────────────── */}
       <div
@@ -425,7 +426,7 @@ export default function TerminalPanel({ open, onToggle }: TerminalPanelProps) {
 
       {/* ── Terminal body ───────────────────────────────────────────────────── */}
       {/* Always render TerminalInstances so WS connections survive tab switches */}
-      <div style={{ height: open ? 260 : 0, overflow: 'hidden', position: 'relative' }}>
+      <div style={{ height: open ? height : 0, overflow: 'hidden', position: 'relative' }}>
         {tabs.map(tab => (
           <div
             key={tab.id}

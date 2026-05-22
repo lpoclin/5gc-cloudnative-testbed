@@ -88,9 +88,11 @@ func main() {
 		api.GET("/metrics/cluster",                 metH.GetClusterMetrics)
 		api.GET("/metrics/timeseries",              metH.GetTimeSeries)
 		api.GET("/metrics/pod/:namespace/:pod",     metH.GetPodMetrics)
+		api.GET("/metrics/interface",               metH.GetInterfaceMetrics)
 
 		// Infrastructure
 		api.GET("/nodes",           infraH.GetNodes)
+		api.GET("/cluster-info",    infraH.GetClusterInfo)
 		api.GET("/events",          infraH.GetEvents)
 		api.GET("/events/:namespace", infraH.GetEvents)
 		api.GET("/pvcs",            infraH.GetPVCs)
@@ -103,7 +105,8 @@ func main() {
 	// ── WebSocket handlers ───────────────────────────────────────────────────
 	r.GET("/ws/topology",                      topoH.WatchTopology)
 	r.GET("/ws/logs/:namespace/:pod",          logsH.StreamLogs)
-	r.GET("/ws/packets/:node/:pod/:interface", packetsH.StreamPackets)
+	r.GET("/ws/packets",                       packetsH.StreamPacketsQuery)   // always-live: ?pod=&interface=
+	r.GET("/ws/packets/:node/:pod/:interface", packetsH.StreamPackets)        // legacy path-param form
 	r.GET("/ws/terminal",                      handlers.TerminalHandler)
 
 	// ── HTTP server ──────────────────────────────────────────────────────────

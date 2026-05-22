@@ -58,7 +58,7 @@ loki:
   url: http://loki-gateway.loki
 
 prometheus:
-  url: http://kube-prometheus-stack-prometheus.monitoring:9090
+  url: http://kube-prometheus-stack-prometheus.monitoring:9090/prometheus
 
 hubble:
   address: hubble-relay.kube-system:4245
@@ -67,3 +67,8 @@ terminal:
   enabled: true
   sshHost: "192.168.18.210"
   sshPort: 22
+
+clusterInfo:
+  hypervisor: "Proxmox VE"
+  cniPrimary: "Cilium"
+  cniSecondary: "Multus"

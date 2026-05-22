@@ -31,6 +31,7 @@ export interface TopologyNode {
   nfType: NFType
   displayName: string
   nodeName: string
+  nodeIP: string        // k8s node InternalIP (pod.status.hostIP) for Prometheus queries
   status: PodStatus
   interfaces: NetworkInterface[]
   age: string
@@ -48,6 +49,7 @@ export interface TopologyEdge {
   srcIP?: string
   dstIP?: string
   hasTraffic?: boolean
+  busEdge?: boolean   // SBI bus edge — drawn on canvas overlay, not as a Cytoscape edge
 }
 
 export interface TopologyGraph {

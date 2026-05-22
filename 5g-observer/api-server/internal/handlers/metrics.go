@@ -59,6 +59,23 @@ func (h *MetricsHandler) GetPodMetrics(c *gin.Context) {
 	c.JSON(http.StatusOK, m)
 }
 
+// GET /api/metrics/interface?pod=PODNAME&interface=IFACE&nodeIP=NODE_IP
+func (h *MetricsHandler) GetInterfaceMetrics(c *gin.Context) {
+	iface  := c.Query("interface")
+	nodeIP := c.Query("nodeIP")
+	if iface == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "interface param required"})
+		return
+	}
+	m, err := h.prom.InterfaceMetrics(c.Request.Context(), iface, nodeIP)
+	if err != nil {
+		log.Warn().Err(err).Str("iface", iface).Msg("interface metrics")
+		c.JSON(http.StatusOK, map[string]interface{}{"throughputMbps": 0, "packetsPerSec": 0, "dropRate": 0})
+		return
+	}
+	c.JSON(http.StatusOK, m)
+}
+
 func defaultClusterMetrics() map[string]interface{} {
 	return map[string]interface{}{
 		"cpuPercent": 0, "memoryPercent": 0,

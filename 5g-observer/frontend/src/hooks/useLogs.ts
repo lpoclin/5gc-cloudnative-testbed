@@ -11,28 +11,45 @@ export interface LogLine {
 export type LogLevel = 'all' | 'info' | 'warn' | 'error' | 'debug'
 
 const MAX_LINES = 2_000
+const ANSI_RE   = /\x1b\[[0-9;]*m/g
 
-function parseLevel(raw: string): LogLine['level'] {
-  const l = raw.toLowerCase()
-  if (l.includes('"level":"error"') || l.includes('level=error') || l.includes(' ERROR ')) return 'error'
-  if (l.includes('"level":"warn"') || l.includes('level=warn') || l.includes(' WARN ')) return 'warn'
-  if (l.includes('"level":"debug"') || l.includes('level=debug') || l.includes(' DEBUG ')) return 'debug'
-  if (l.includes('"level":"info"') || l.includes('level=info') || l.includes(' INFO ')) return 'info'
-  return 'unknown'
-}
+// parseRawLine splits the Loki-prepended timestamp (ISO\tlog_line) and cleans ANSI codes.
+function parseRawLine(raw: string): { timestamp: string; level: LogLine['level']; message: string } {
+  let timestamp = ''
+  let line = raw
 
-function parseTimestamp(raw: string): string {
-  // Try JSON log
-  try {
-    const obj = JSON.parse(raw) as Record<string, unknown>
-    const t = obj.time ?? obj.timestamp ?? obj.ts ?? obj['@timestamp']
-    if (typeof t === 'string') return t
-    if (typeof t === 'number') return new Date(t * 1000).toISOString()
-  } catch {}
-  // Try syslog prefix: "2006-01-02T15:04:05Z ..."
-  const m = raw.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z?\+?\d*)/)
-  if (m) return m[1]
-  return new Date().toISOString()
+  const tab = raw.indexOf('\t')
+  if (tab > 0) {
+    timestamp = raw.substring(0, tab)
+    line      = raw.substring(tab + 1)
+  }
+
+  // Strip ANSI color codes from the log line
+  const cleaned = line.replace(ANSI_RE, '')
+
+  // Fallback: extract timestamp from log line content
+  if (!timestamp) {
+    try {
+      const obj = JSON.parse(cleaned) as Record<string, unknown>
+      const t = obj.time ?? obj.timestamp ?? obj.ts ?? obj['@timestamp']
+      if (typeof t === 'string') timestamp = t
+      else if (typeof t === 'number') timestamp = new Date(t * 1000).toISOString()
+    } catch { /* not JSON */ }
+    if (!timestamp) {
+      const m = cleaned.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z?[+-]?\d*)/)
+      timestamp = m ? m[1] : new Date().toISOString()
+    }
+  }
+
+  // Level detection — covers free5GC [INFO] [WARN] [ERRO] [DEBU] and structured formats
+  const l = cleaned.toLowerCase()
+  let level: LogLine['level'] = 'unknown'
+  if (l.includes('[erro]') || l.includes('[error]') || l.includes('"level":"error"') || l.includes('level=error')) level = 'error'
+  else if (l.includes('[warn]') || l.includes('"level":"warn"') || l.includes('level=warn')) level = 'warn'
+  else if (l.includes('[debu]') || l.includes('[dbug]') || l.includes('"level":"debug"') || l.includes('level=debug')) level = 'debug'
+  else if (l.includes('[info]') || l.includes('"level":"info"') || l.includes('level=info')) level = 'info'
+
+  return { timestamp, level, message: cleaned }
 }
 
 interface LogState {
@@ -92,14 +109,13 @@ export function useLogs(namespace: string, podName: string, enabled = true) {
     const mgr = new WSManager(url)
     mgrRef.current = mgr
 
-    mgr.on<string | string[]>('*', (raw) => {
-      const lines = Array.isArray(raw) ? raw : [String(raw)]
-      const parsed: LogLine[] = lines.map(r => ({
-        timestamp: parseTimestamp(r),
-        level: parseLevel(r),
-        message: r,
-        raw: r,
-      }))
+    // WSManager dispatches env.data (string[]) when subscribed to a specific type.
+    // Each string may have a Loki timestamp prefix: "ISO_TS\tlog_line"
+    mgr.on<string[]>('log_lines', (lines) => {
+      const parsed: LogLine[] = lines.map(r => {
+        const { timestamp, level, message } = parseRawLine(r)
+        return { timestamp, level, message, raw: r }
+      })
       dispatch({ type: 'APPEND', lines: parsed })
     })
 

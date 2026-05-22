@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -54,13 +55,13 @@ type ClusterMetrics struct {
 }
 
 func (c *Client) ClusterMetrics(ctx context.Context) (*ClusterMetrics, error) {
-	cpuPct,    _ := c.queryScalar(ctx, `100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`)
-	memPct,    _ := c.queryScalar(ctx, `100 * (1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes))`)
-	podsRun,   _ := c.queryScalar(ctx, `sum(kube_pod_status_phase{phase="Running"})`)
+	cpuPct,    _ := c.queryScalar(ctx, `(1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))) * 100`)
+	memPct,    _ := c.queryScalar(ctx, `(1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) * 100`)
+	podsRun,   _ := c.queryScalar(ctx, `count(kube_pod_status_phase{phase="Running"})`)
 	podsTot,   _ := c.queryScalar(ctx, `count(kube_pod_info)`)
-	nodesRdy,  _ := c.queryScalar(ctx, `sum(kube_node_status_condition{condition="Ready",status="true"})`)
+	nodesRdy,  _ := c.queryScalar(ctx, `count(kube_node_status_condition{condition="Ready",status="true"})`)
 	nodesTot,  _ := c.queryScalar(ctx, `count(kube_node_info)`)
-	pvcsBound, _ := c.queryScalar(ctx, `sum(kube_persistentvolumeclaim_status_phase{phase="Bound"})`)
+	pvcsBound, _ := c.queryScalar(ctx, `count(kube_persistentvolumeclaim_status_phase{phase="Bound"})`)
 	pvcsTot,   _ := c.queryScalar(ctx, `count(kube_persistentvolumeclaim_info)`)
 
 	return &ClusterMetrics{
@@ -99,8 +100,8 @@ func (c *Client) TimeSeries(ctx context.Context, rangeStr string) (*TimeSeries, 
 		step = "900s"
 	}
 
-	cpuQ := `100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`
-	memQ := `100 * (1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes))`
+	cpuQ := `sum(rate(node_cpu_seconds_total{mode!="idle"}[5m]))`
+	memQ := `1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)`
 
 	cpuPts, _ := c.queryRange(ctx, cpuQ, dur, step)
 	memPts, _ := c.queryRange(ctx, memQ, dur, step)
@@ -129,39 +130,98 @@ type NodeMetric struct {
 	CPUPercent  float64
 	MemPercent  float64
 	DiskPercent float64
+	PodCount    int
 }
 
+// NodeMetrics returns metrics keyed by node internal IP (stripped of port).
+// Callers match this against node.Status.Addresses[InternalIP].
 func (c *Client) NodeMetrics(ctx context.Context) (map[string]NodeMetric, error) {
-	cpuQ  := `100 - (rate(node_cpu_seconds_total{mode="idle"}[5m]) * 100)`
-	memQ  := `100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)`
-	diskQ := `100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})`
+	// Proper per-instance aggregation (avg across all CPUs per node)
+	cpuQ  := `(1 - avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) * 100`
+	memQ  := `(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100`
+	diskQ := `(1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100`
 
 	result := make(map[string]NodeMetric)
 
-	addMetric := func(q string, setter func(*NodeMetric, float64)) {
+	// instance label is "IP:port" — find node IP by checking HasPrefix(instance, nodeIP+":")
+	// Key result by the raw IP (stripped of port) so the handler can match by node InternalIP.
+	nodeIPFromInstance := func(instance string) string {
+		if i := strings.LastIndex(instance, ":"); i > 0 {
+			return instance[:i]
+		}
+		return instance
+	}
+
+	addByInstance := func(q string, setter func(*NodeMetric, float64)) {
 		resp, err := c.queryRaw(ctx, q)
 		if err != nil {
 			return
 		}
 		for _, r := range resp.Data.Result {
-			node, ok := r.Metric["instance"]
-			if !ok {
-				node = r.Metric["node"]
-			}
-			if node == "" {
+			ip := nodeIPFromInstance(r.Metric["instance"])
+			if ip == "" {
 				continue
 			}
 			val := parseValue(r.Value)
-			m := result[node]
+			m := result[ip]
 			setter(&m, val)
-			result[node] = m
+			result[ip] = m
 		}
 	}
 
-	addMetric(cpuQ,  func(m *NodeMetric, v float64) { m.CPUPercent = round1(v) })
-	addMetric(memQ,  func(m *NodeMetric, v float64) { m.MemPercent = round1(v) })
-	addMetric(diskQ, func(m *NodeMetric, v float64) { m.DiskPercent = round1(v) })
+	addByInstance(cpuQ,  func(m *NodeMetric, v float64) { m.CPUPercent = round1(v) })
+	addByInstance(memQ,  func(m *NodeMetric, v float64) { m.MemPercent = round1(v) })
+	addByInstance(diskQ, func(m *NodeMetric, v float64) { m.DiskPercent = round1(v) })
 
+	return result, nil
+}
+
+// ─── Interface metrics ────────────────────────────────────────────────────────
+
+type InterfaceMetrics struct {
+	ThroughputMbps float64 `json:"throughputMbps"`
+	PacketsPerSec  float64 `json:"packetsPerSec"`
+	DropRate       float64 `json:"dropRate"`
+}
+
+// InterfaceMetrics queries per-interface throughput, pps, and drop rate.
+// nodeIP must match the node_exporter instance label prefix (e.g. "192.168.18.211").
+func (c *Client) InterfaceMetrics(ctx context.Context, iface, nodeIP string) (*InterfaceMetrics, error) {
+	if nodeIP == "" || iface == "" {
+		return &InterfaceMetrics{}, nil
+	}
+
+	nodePattern := nodeIP + ":.*"
+
+	txBytesQ  := fmt.Sprintf(`rate(node_network_transmit_bytes_total{device=%q,instance=~%q}[30s]) * 8 / 1e6`, iface, nodePattern)
+	txPktsQ   := fmt.Sprintf(`rate(node_network_transmit_packets_total{device=%q,instance=~%q}[30s])`, iface, nodePattern)
+	txErrsQ   := fmt.Sprintf(`rate(node_network_transmit_errs_total{device=%q,instance=~%q}[30s]) / clamp_min(rate(node_network_transmit_packets_total{device=%q,instance=~%q}[30s]), 1) * 100`, iface, nodePattern, iface, nodePattern)
+
+	throughput, _ := c.queryScalar(ctx, txBytesQ)
+	pps, _        := c.queryScalar(ctx, txPktsQ)
+	drop, _       := c.queryScalar(ctx, txErrsQ)
+
+	return &InterfaceMetrics{
+		ThroughputMbps: round2(throughput),
+		PacketsPerSec:  round1(pps),
+		DropRate:       round2(drop),
+	}, nil
+}
+
+// NodePodCounts returns pod counts keyed by k8s node name.
+func (c *Client) NodePodCounts(ctx context.Context) (map[string]int, error) {
+	resp, err := c.queryRaw(ctx, `count by(node) (kube_pod_info)`)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]int)
+	for _, r := range resp.Data.Result {
+		node := r.Metric["node"]
+		if node == "" {
+			continue
+		}
+		result[node] = int(parseValue(r.Value))
+	}
 	return result, nil
 }
 
@@ -186,7 +246,7 @@ func (c *Client) queryRange(ctx context.Context, query, dur, step string) ([]Tim
 	params.Set("end",   fmt.Sprintf("%d", now.Unix()))
 	params.Set("step",  step)
 
-	reqURL := fmt.Sprintf("%s/api/v1/query_range?%s", c.base, params.Encode())
+	reqURL := strings.TrimRight(c.base, "/") + "/api/v1/query_range?" + params.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
@@ -227,7 +287,7 @@ func (c *Client) queryRaw(ctx context.Context, query string) (*promResponse, err
 	params := url.Values{}
 	params.Set("query", query)
 
-	reqURL := fmt.Sprintf("%s/api/v1/query?%s", c.base, params.Encode())
+	reqURL := strings.TrimRight(c.base, "/") + "/api/v1/query?" + params.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
@@ -260,9 +320,8 @@ func parseValue(v []interface{}) float64 {
 	return val
 }
 
-func round1(v float64) float64 {
-	return math.Round(v*10) / 10
-}
+func round1(v float64) float64 { return math.Round(v*10) / 10 }
+func round2(v float64) float64 { return math.Round(v*100) / 100 }
 
 func parseDuration(s string) (time.Duration, error) {
 	switch s {

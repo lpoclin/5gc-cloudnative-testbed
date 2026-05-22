@@ -51,6 +51,12 @@ spec:
             - name: SSH_PORT
               value: {{ .Values.terminal.sshPort | quote }}
             {{- end }}
+            - name: CLUSTER_HYPERVISOR
+              value: {{ .Values.clusterInfo.hypervisor | quote }}
+            - name: CLUSTER_CNI_PRIMARY
+              value: {{ .Values.clusterInfo.cniPrimary | quote }}
+            - name: CLUSTER_CNI_SECONDARY
+              value: {{ .Values.clusterInfo.cniSecondary | quote }}
           livenessProbe:
             httpGet:
               path: /health

@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 set -e
 
 # Grant NET_RAW+NET_ADMIN to tcpdump and tshark so they can capture

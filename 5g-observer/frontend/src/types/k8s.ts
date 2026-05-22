@@ -24,6 +24,18 @@ export interface K8sNode {
   osImage: string
   podCount: number
   podCapacity: number
+  // Stack info (Fix E)
+  kernelVersion:    string
+  containerRuntime: string
+  architecture:     string
+  cpuCores:         number
+  totalMemoryGiB:   number
+}
+
+export interface ClusterInfo {
+  hypervisor:    string
+  cniPrimary:    string
+  cniSecondary:  string
 }
 
 export interface K8sEvent {

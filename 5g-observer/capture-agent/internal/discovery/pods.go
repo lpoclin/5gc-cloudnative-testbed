@@ -15,11 +15,12 @@ import (
 )
 
 type PodInfo struct {
-	Name       string
-	Namespace  string
-	NodeName   string
-	UID        string
-	Interfaces []string // interface names from network-status annotation
+	Name        string
+	Namespace   string
+	NodeName    string
+	UID         string
+	ContainerID string   // containerd://SHA256 of the first app container (for cgroupv2 PID lookup)
+	Interfaces  []string // interface names from network-status annotation
 }
 
 type Discovery struct {
@@ -86,12 +87,21 @@ func (d *Discovery) listPods(ctx context.Context) []PodInfo {
 				continue
 			}
 			ifaces := parseInterfaces(pod.Annotations)
+			// Prefer the first non-pause container ID for cgroupv2 PID matching
+			containerID := ""
+			for _, cs := range pod.Status.ContainerStatuses {
+				if cs.ContainerID != "" {
+					containerID = cs.ContainerID
+					break
+				}
+			}
 			result = append(result, PodInfo{
-				Name:       pod.Name,
-				Namespace:  pod.Namespace,
-				NodeName:   pod.Spec.NodeName,
-				UID:        string(pod.UID),
-				Interfaces: ifaces,
+				Name:        pod.Name,
+				Namespace:   pod.Namespace,
+				NodeName:    pod.Spec.NodeName,
+				UID:         string(pod.UID),
+				ContainerID: containerID,
+				Interfaces:  ifaces,
 			})
 		}
 	}

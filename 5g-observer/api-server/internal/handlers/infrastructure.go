@@ -3,6 +3,7 @@ package handlers
 import (
 	"math"
 	"net/http"
+	"os"
 	"sort"
 	"time"
 
@@ -25,14 +26,16 @@ func NewInfraHandler(cs *kubernetes.Clientset, prom *prometheus.Client) *InfraHa
 
 // GET /api/nodes
 func (h *InfraHandler) GetNodes(c *gin.Context) {
-	nodes, err := h.cs.CoreV1().Nodes().List(c.Request.Context(), listOpts())
+	ctx := c.Request.Context()
+	nodes, err := h.cs.CoreV1().Nodes().List(ctx, listOpts())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Get CPU/mem from Prometheus
-	promMetrics, _ := h.prom.NodeMetrics(c.Request.Context())
+	// Prometheus metrics keyed by node IP (NodeMetrics) and by node name (pod counts)
+	promMetrics, _ := h.prom.NodeMetrics(ctx)
+	podCounts,   _ := h.prom.NodePodCounts(ctx)
 
 	result := make([]map[string]interface{}, 0, len(nodes.Items))
 	for _, node := range nodes.Items {
@@ -59,13 +62,8 @@ func (h *InfraHandler) GetNodes(c *gin.Context) {
 		capDisk  := node.Status.Capacity.StorageEphemeral().Value()
 
 		nodeName := node.Name
-		cpuPct, memPct, diskPct := 0.0, 0.0, 0.0
-		if m, ok := promMetrics[nodeName]; ok {
-			cpuPct  = m.CPUPercent
-			memPct  = m.MemPercent
-			diskPct = m.DiskPercent
-		}
 
+		// Collect internal IP for prometheus metric lookup (keyed by IP, not name)
 		ip := ""
 		for _, addr := range node.Status.Addresses {
 			if addr.Type == corev1.NodeInternalIP {
@@ -74,8 +72,18 @@ func (h *InfraHandler) GetNodes(c *gin.Context) {
 			}
 		}
 
-		kubeletVer := node.Status.NodeInfo.KubeletVersion
-		osImage    := node.Status.NodeInfo.OSImage
+		cpuPct, memPct, diskPct := 0.0, 0.0, 0.0
+		if m, ok := promMetrics[ip]; ok {
+			cpuPct  = m.CPUPercent
+			memPct  = m.MemPercent
+			diskPct = m.DiskPercent
+		}
+
+		podCount := podCounts[nodeName]
+
+		ni := node.Status.NodeInfo
+		cpuCores     := node.Status.Capacity.Cpu().Value()
+		totalMemBytes := node.Status.Capacity.Memory().Value()
 
 		statusStr := "NotReady"
 		if isReady {
@@ -104,10 +112,16 @@ func (h *InfraHandler) GetNodes(c *gin.Context) {
 				"usedBytes":     int64(float64(capDisk) * diskPct / 100),
 				"percent":       math.Round(diskPct*10) / 10,
 			},
-			"kubeletVersion": kubeletVer,
-			"osImage":        osImage,
-			"podCount":       0, // TODO: count pods per node
-			"podCapacity":    110,
+			// Stack info
+			"kubeletVersion":    ni.KubeletVersion,
+			"osImage":           ni.OSImage,
+			"kernelVersion":     ni.KernelVersion,
+			"containerRuntime":  ni.ContainerRuntimeVersion,
+			"architecture":      ni.Architecture,
+			"cpuCores":          cpuCores,
+			"totalMemoryGiB":    math.Round(float64(totalMemBytes)/1073741824*10) / 10,
+			"podCount":          podCount,
+			"podCapacity":       110,
 		})
 	}
 	c.JSON(http.StatusOK, result)
@@ -176,6 +190,22 @@ func (h *InfraHandler) GetPVCs(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+// GET /api/cluster-info — returns cluster-level stack facts from env vars
+func (h *InfraHandler) GetClusterInfo(c *gin.Context) {
+	c.JSON(http.StatusOK, map[string]interface{}{
+		"hypervisor":   envStr("CLUSTER_HYPERVISOR", ""),
+		"cniPrimary":   envStr("CLUSTER_CNI_PRIMARY", "Cilium"),
+		"cniSecondary": envStr("CLUSTER_CNI_SECONDARY", ""),
+	})
+}
+
+func envStr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 // GET /api/namespace-stats

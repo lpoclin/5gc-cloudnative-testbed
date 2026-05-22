@@ -37,18 +37,50 @@ type SessionKey struct {
 	Iface   string
 }
 
+// wildcardKey matches packets for any node for a given pod+interface.
+type wildcardKey struct {
+	PodName string
+	Iface   string
+}
+
 // Subscriber receives packets for a session.
 type Subscriber chan []Packet
 
 // Server implements pb.CaptureServiceServer and fans packets to subscribers.
 type Server struct {
 	pb.UnimplementedCaptureServiceServer
-	mu   sync.RWMutex
-	subs map[SessionKey][]Subscriber
+	mu           sync.RWMutex
+	subs         map[SessionKey][]Subscriber
+	wildcardSubs map[wildcardKey][]Subscriber
 }
 
 func NewServer() *Server {
-	return &Server{subs: make(map[SessionKey][]Subscriber)}
+	return &Server{
+		subs:         make(map[SessionKey][]Subscriber),
+		wildcardSubs: make(map[wildcardKey][]Subscriber),
+	}
+}
+
+// RegisterWildcardSubscriber subscribes to all packets for pod+iface, any node.
+func (s *Server) RegisterWildcardSubscriber(pod, iface string) (Subscriber, func()) {
+	key := wildcardKey{PodName: pod, Iface: iface}
+	ch := make(Subscriber, 512)
+	s.mu.Lock()
+	s.wildcardSubs[key] = append(s.wildcardSubs[key], ch)
+	s.mu.Unlock()
+
+	return ch, func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		list := s.wildcardSubs[key]
+		for i, sub := range list {
+			if sub == ch {
+				s.wildcardSubs[key] = append(list[:i], list[i+1:]...)
+				break
+			}
+		}
+		close(ch)
+	}
 }
 
 // RegisterSubscriber registers a channel to receive packets for a session key.
@@ -73,18 +105,19 @@ func (s *Server) RegisterSubscriber(key SessionKey) (Subscriber, func()) {
 	}
 }
 
-// publish sends a packet batch to all subscribers for the session key.
+// publish sends a packet batch to exact-key subscribers AND wildcard (pod+iface) subscribers.
 func (s *Server) publish(key SessionKey, pkts []Packet) {
+	wKey := wildcardKey{PodName: key.PodName, Iface: key.Iface}
 	s.mu.RLock()
-	subs := s.subs[key]
+	subs  := s.subs[key]
+	wSubs := s.wildcardSubs[wKey]
 	s.mu.RUnlock()
 
 	for _, sub := range subs {
-		select {
-		case sub <- pkts:
-		default:
-			// subscriber too slow — drop rather than block
-		}
+		select { case sub <- pkts: default: }
+	}
+	for _, sub := range wSubs {
+		select { case sub <- pkts: default: }
 	}
 }
 

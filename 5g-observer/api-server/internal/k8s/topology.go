@@ -88,6 +88,7 @@ type TopologyNode struct {
 	NFType      NFType             `json:"nfType"`
 	DisplayName string             `json:"displayName"`
 	NodeName    string             `json:"nodeName"`
+	NodeIP      string             `json:"nodeIP"`   // k8s node InternalIP — matches Prometheus instance label
 	Status      PodStatus          `json:"status"`
 	Interfaces  []NetworkInterface `json:"interfaces"`
 	Age         string             `json:"age"`
@@ -104,6 +105,7 @@ type TopologyEdge struct {
 	Plane     Plane  `json:"plane"`
 	SrcIP     string `json:"srcIP,omitempty"`
 	DstIP     string `json:"dstIP,omitempty"`
+	BusEdge   bool   `json:"busEdge,omitempty"` // SBI bus edge — rendered on canvas overlay
 }
 
 type TopologyGraph struct {
@@ -503,6 +505,7 @@ func podToNode(pod *corev1.Pod) *TopologyNode {
 		NFType:      nfType,
 		DisplayName: displayName,
 		NodeName:    pod.Spec.NodeName,
+		NodeIP:      pod.Status.HostIP,   // node's InternalIP for Prometheus queries
 		Status:      status,
 		Interfaces:  ifaces,
 		Age:         age,
@@ -676,7 +679,8 @@ func buildEdges(nodes []TopologyNode, upfNodeDNNs map[string][]string, dnByDNN m
 		}
 	}
 
-	// SBI: NRF ↔ each CP NF, labelled with the NF's service name
+	// SBI: NRF ↔ each CP NF, labelled with the NF's service name.
+	// BusEdge=true: these are rendered on the canvas SBI bus overlay, not as Cytoscape edges.
 	sbiLabel := map[NFType]string{
 		NFTypeAMF:  "Namf",
 		NFTypeSMF:  "Nsmf",
@@ -698,6 +702,7 @@ func buildEdges(nodes []TopologyNode, upfNodeDNNs map[string][]string, dnByDNN m
 					Interface: "sbi",
 					Label:     lbl,
 					Plane:     PlaneSBI,
+					BusEdge:   true,
 				})
 			}
 		}

@@ -92,7 +92,7 @@ func (m *Manager) runCapture(ctx context.Context, key sessionKey, pod discovery.
 		Str("iface", key.iface).
 		Msg("capture session starting")
 
-	ch, err := RunCapture(ctx, key.podUID, key.iface)
+	ch, err := RunCapture(ctx, key.podUID, pod.ContainerID, key.iface)
 	if err != nil {
 		log.Error().Err(err).Str("pod", pod.Name).Str("iface", key.iface).Msg("capture start failed")
 		return

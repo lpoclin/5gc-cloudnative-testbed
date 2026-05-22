@@ -19,7 +19,7 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
-	apiServerAddr := envOr("API_SERVER_ADDR", "5g-observer-api:9999")
+	apiServerAddr := envOr("API_SERVER_ADDR", "observer-api:9999")
 	targetNS      := envOr("TARGET_NAMESPACES", "free5gc")
 	nodeNameStr   := envOr("NODE_NAME", "")
 

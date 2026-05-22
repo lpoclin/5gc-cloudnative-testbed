@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -24,14 +25,19 @@ func (h *PacketsHandler) StreamPackets(c *gin.Context) {
 	pod   := c.Param("pod")
 	iface := c.Param("interface")
 
+	log.Debug().Str("node", node).Str("pod", pod).Str("iface", iface).Msg("packet ws: upgrading")
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Error().Err(err).Msg("ws upgrade packets")
+		log.Error().Err(err).Str("pod", pod).Str("iface", iface).Msg("packet ws: upgrade failed")
 		return
 	}
 	defer conn.Close()
 
 	key := capture.SessionKey{Node: node, PodName: pod, Iface: iface}
+	log.Debug().Str("node", node).Str("pod", pod).Str("iface", iface).
+		Msg("packet ws: subscribing to capture session")
+
 	ch, unsub := h.srv.RegisterSubscriber(key)
 	defer unsub()
 
@@ -70,14 +76,105 @@ func (h *PacketsHandler) StreamPackets(c *gin.Context) {
 			return
 		case pkts, ok := <-ch:
 			if !ok {
+				log.Debug().Str("pod", pod).Str("iface", iface).Msg("packet ws: channel closed")
 				return
 			}
+			log.Debug().Str("pod", pod).Str("iface", iface).Int("count", len(pkts)).Msg("packet ws: forwarding batch")
 			wire := make([]wirePacket, len(pkts))
 			for i, p := range pkts {
 				wire[i] = wirePacket{
 					TimestampNs: p.TimestampNs, SrcIP: p.SrcIP, DstIP: p.DstIP,
 					SrcPort: p.SrcPort, DstPort: p.DstPort, Protocol: p.Protocol,
 					Length: p.Length, Info: p.Info, Raw: p.Raw,
+					InterfaceName: p.InterfaceName, PodName: p.PodName,
+					Namespace: p.Namespace, Node: p.Node,
+				}
+			}
+			if err := conn.WriteJSON(map[string]interface{}{
+				"type": "packets",
+				"data": wire,
+			}); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// StreamPacketsQuery — GET /ws/packets?pod=PODNAME&interface=IFACE
+// Always-live capture: connects immediately, no Start/Stop.
+// Subscribes via wildcard (any node) for the given pod+interface.
+// Sends batches as {"type":"packets","data":[...]} for WS protocol compatibility.
+// Accepts {"type":"clear"} from client — handled client-side only; logged here.
+func (h *PacketsHandler) StreamPacketsQuery(c *gin.Context) {
+	pod   := c.Query("pod")
+	iface := c.Query("interface")
+
+	if pod == "" || iface == "" {
+		c.String(http.StatusBadRequest, "pod and interface query params required")
+		return
+	}
+
+	log.Debug().Str("pod", pod).Str("iface", iface).Msg("packet ws query: upgrading")
+
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Error().Err(err).Str("pod", pod).Str("iface", iface).Msg("packet ws query: upgrade failed")
+		return
+	}
+	defer conn.Close()
+
+	ch, unsub := h.srv.RegisterWildcardSubscriber(pod, iface)
+	defer unsub()
+
+	log.Info().Str("pod", pod).Str("iface", iface).Msg("packet ws query stream started")
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			var cmd struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(msg, &cmd) == nil && cmd.Type == "clear" {
+				log.Debug().Str("pod", pod).Str("iface", iface).Msg("packet ws query: client clear")
+			}
+		}
+	}()
+
+	type wirePacket struct {
+		TimestampNs   int64  `json:"ts"`
+		SrcIP         string `json:"src_ip"`
+		DstIP         string `json:"dst_ip"`
+		SrcPort       uint32 `json:"src_port"`
+		DstPort       uint32 `json:"dst_port"`
+		Protocol      string `json:"protocol"`
+		Length        uint32 `json:"length"`
+		Info          string `json:"info"`
+		InterfaceName string `json:"iface"`
+		PodName       string `json:"pod"`
+		Namespace     string `json:"ns"`
+		Node          string `json:"node"`
+	}
+
+	for {
+		select {
+		case <-done:
+			return
+		case pkts, ok := <-ch:
+			if !ok {
+				return
+			}
+			log.Debug().Str("pod", pod).Str("iface", iface).Int("count", len(pkts)).Msg("packet ws query: forwarding")
+			wire := make([]wirePacket, len(pkts))
+			for i, p := range pkts {
+				wire[i] = wirePacket{
+					TimestampNs: p.TimestampNs, SrcIP: p.SrcIP, DstIP: p.DstIP,
+					SrcPort: p.SrcPort, DstPort: p.DstPort, Protocol: p.Protocol,
+					Length: p.Length, Info: p.Info,
 					InterfaceName: p.InterfaceName, PodName: p.PodName,
 					Namespace: p.Namespace, Node: p.Node,
 				}

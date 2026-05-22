@@ -5,7 +5,45 @@ import TimeSeriesChart from '@/components/Infrastructure/TimeSeriesChart'
 import EventsTable from '@/components/Infrastructure/EventsTable'
 import { NodeCardSkeleton, Skeleton } from '@/components/common/LoadingSkeleton'
 import { api } from '@/services/api'
-import type { ClusterMetrics, NamespaceStats } from '@/types/k8s'
+import type { ClusterMetrics, ClusterInfo, K8sNode, NamespaceStats } from '@/types/k8s'
+
+// ─── Stack panel ──────────────────────────────────────────────────────────────
+
+function StackCard({ node, info }: { node: K8sNode; info: ClusterInfo }) {
+  const cni = [info.cniPrimary, info.cniSecondary].filter(Boolean).join(' + ') || '—'
+  return (
+    <div
+      className="rounded-lg p-3 text-xs space-y-1"
+      style={{ background: '#161b22', border: '1px solid #30363d' }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span className="font-mono font-bold text-sm" style={{ color: '#e6edf3' }}>{node.name}</span>
+        <span
+          className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+          style={{ background: '#21262d', color: '#8b949e', border: '1px solid #30363d' }}
+        >
+          {node.role}
+        </span>
+      </div>
+      {([
+        ['kernel',      node.kernelVersion],
+        ['OS',          node.osImage],
+        ['runtime',     node.containerRuntime],
+        ['arch',        node.architecture],
+        ['kubelet',     node.kubeletVersion],
+        ['CPU',         `${node.cpuCores} cores`],
+        ['RAM',         `${node.totalMemoryGiB} GiB`],
+        ['CNI',         cni],
+        ['Hypervisor',  info.hypervisor || '—'],
+      ] as [string, string][]).map(([label, value]) => (
+        <div key={label} className="flex gap-2">
+          <span className="w-20 shrink-0 font-mono" style={{ color: '#8b949e' }}>{label}:</span>
+          <span className="font-mono break-all" style={{ color: '#c9d1d9' }}>{value || '—'}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const REFETCH = 10_000
 
@@ -15,6 +53,14 @@ export default function InfrastructurePage() {
     queryFn: api.nodes.list,
     refetchInterval: REFETCH,
   })
+
+  const { data: clusterInfo } = useQuery<ClusterInfo>({
+    queryKey: ['cluster-info'],
+    queryFn: api.clusterInfo.get,
+    staleTime: 300_000,
+  })
+
+  const defaultClusterInfo: ClusterInfo = { hypervisor: '', cniPrimary: 'Cilium', cniSecondary: '' }
 
   const { data: metrics } = useQuery<ClusterMetrics>({
     queryKey: ['metrics-cluster'],
@@ -107,6 +153,18 @@ export default function InfrastructurePage() {
             </div>
           </div>
         </div>
+
+        {/* Node stack info */}
+        {nodes.length > 0 && (
+          <div className="card p-4">
+            <div className="label mb-3">Node Stack</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {nodes.map(node => (
+                <StackCard key={node.name} node={node} info={clusterInfo ?? defaultClusterInfo} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* PVCs (TODO: wire to API) */}
         <div className="card p-4">
