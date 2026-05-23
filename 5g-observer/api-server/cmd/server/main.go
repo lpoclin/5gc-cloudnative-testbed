@@ -104,6 +104,9 @@ func main() {
 		// Packet decode (sharkd) and pcap export
 		api.GET("/packet/decode",    handlers.DecodePacketHandler(captureServer))
 		api.GET("/packets/export",   handlers.ExportPacketsHandler(captureServer))
+
+		// Static config
+		api.GET("/config", handlers.ConfigHandler)
 	}
 
 	// ── WebSocket handlers ───────────────────────────────────────────────────

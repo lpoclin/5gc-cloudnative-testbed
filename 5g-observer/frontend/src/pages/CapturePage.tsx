@@ -41,7 +41,7 @@ type ConnStatus = 'idle' | 'connecting' | 'live' | 'paused' | 'error' | 'stopped
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const RING_MAX  = 5_000
+const RING_MAX  = 10_000
 const PROTOCOLS = ['All', 'GTP-U', 'PFCP', 'HTTP/2', 'NGAP', 'SCTP', 'DNS', 'TCP', 'UDP'] as const
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -863,7 +863,15 @@ export default function CapturePage() {
   const bufferRef = useRef<LivePacket[]>([])
 
   const [status, setStatus] = useState<ConnStatus>('idle')
+  const [ringBufferSize, setRingBufferSize] = useState(10_000)
   const tableRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then((cfg: { ringBufferSize: number }) => setRingBufferSize(cfg.ringBufferSize))
+      .catch(() => {})
+  }, [])
 
   const { data: nodes = [] } = useQuery({
     queryKey: ['topology-nodes-any'],
@@ -1088,7 +1096,7 @@ export default function CapturePage() {
             </button>
           ) : (
             <button onClick={handlePause} className="px-2 py-1 rounded text-xs"
-              style={{ background: '#21262d', color: '#e6edf3', border: '1px solid #30363d', borderLeft: status === 'live' ? '3px solid #ef4444' : '1px solid #30363d' }}>
+              style={{ background: '#21262d', color: status === 'live' ? '#c26363' : '#e6edf3', border: `1px solid ${status === 'live' ? '#c26363' : '#30363d'}` }}>
               ⏸ Pause
             </button>
           )}
@@ -1261,7 +1269,7 @@ export default function CapturePage() {
         <span style={{ color: '#30363d' }}>│</span>
         <span>Shown: <strong style={{ color: '#e6edf3' }}>{displayed.length}</strong></span>
         <span style={{ color: '#30363d' }}>│</span>
-        <span>Buf: <strong style={{ color: '#e6edf3' }}>{packets.length}</strong>/5,000</span>
+        <span>Buf: <strong style={{ color: '#e6edf3' }}>{packets.length}</strong>/{ringBufferSize.toLocaleString()}</span>
       </div>
     </div>
   )

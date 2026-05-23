@@ -151,7 +151,7 @@ type Server struct {
 	pktRings  map[wildcardKey]*pktRingBuf
 }
 
-const pktRingCap = 5_000
+const PktRingCap = 10_000
 
 func NewServer() *Server {
 	return &Server{
@@ -280,7 +280,7 @@ func (s *Server) publish(key SessionKey, pkts []Packet) {
 		s.pktRingMu.Lock()
 		ring, ok := s.pktRings[wKey]
 		if !ok {
-			ring = newPktRingBuf(pktRingCap)
+			ring = newPktRingBuf(PktRingCap)
 			s.pktRings[wKey] = ring
 		}
 		s.pktRingMu.Unlock()
