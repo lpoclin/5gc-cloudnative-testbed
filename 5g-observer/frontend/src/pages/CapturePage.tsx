@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react'
+﻿import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useQuery } from '@tanstack/react-query'
@@ -482,9 +482,6 @@ interface DecodeApiResponse {
   error?:  string
 }
 
-// SharkdNodeItem — renders one tree node and (recursively) its children.
-// ALL text is #f0f6fc (no per-protocol colours), JetBrains Mono 13px,
-// exactly matching the Wireshark packet-details pane aesthetic.
 function SharkdNodeItem({
   node, depth, onSelect, selectedRange,
 }: {
@@ -494,67 +491,51 @@ function SharkdNodeItem({
   selectedRange: [number, number] | null
 }) {
   const hasChildren = (node.e?.length ?? 0) > 0
+  const [expanded, setExpanded] = useState(true)
 
-  // Bit-field breakdown lines like "0... .... = Reserved bit: Not set" start collapsed.
-  // Everything else (including top-level protocol layers) starts expanded.
-  const isBitField = /^[01.]{4}[\s.]/.test(node.l)
-  const [expanded, setExpanded] = useState(!isBitField)
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (hasChildren) setExpanded(v => !v)
+  }
+
+  const select = () => {
+    if (node.h) onSelect(node.h)
+  }
 
   const isSelected = selectedRange != null && node.h != null &&
-    node.h[0] === selectedRange[0] && node.h[1] === selectedRange[1]
+    selectedRange[0] === node.h[0] && selectedRange[1] === node.h[1]
 
   return (
     <div>
       <div
-        onClick={() => { if (node.h) onSelect(node.h) }}
+        onClick={select}
         title={node.f}
         style={{
-          paddingLeft: 4 + depth * 16,
-          background: isSelected ? '#1e3a5f' : undefined,
-          display: 'flex',
-          alignItems: 'flex-start',
-          lineHeight: '20px',
-          cursor: 'default',
-        }}
-        className="hover:bg-white/5 select-text"
-      >
-        {/* ▼ expanded  ▶ collapsed     leaf (two non-breaking spaces) */}
-        <span
-          onClick={e => { e.stopPropagation(); if (hasChildren) setExpanded(v => !v) }}
-          style={{
-            display: 'inline-block',
-            width: 16,
-            flexShrink: 0,
-            color: '#f0f6fc',
-            cursor: hasChildren ? 'pointer' : 'default',
-            fontFamily: '"JetBrains Mono", "Cascadia Code", monospace',
-            fontSize: 13,
-            lineHeight: '20px',
-          }}
-        >
-          {hasChildren ? (expanded ? '▼' : '▶') : '  '}
-        </span>
-        <span style={{
-          color: '#f0f6fc',
+          paddingLeft: depth * 16,
+          cursor: node.h ? 'pointer' : 'default',
+          background: isSelected ? '#1e3a5f' : 'transparent',
           fontFamily: '"JetBrains Mono", "Cascadia Code", monospace',
           fontSize: 13,
+          color: '#f0f6fc',
+          whiteSpace: 'pre',
           lineHeight: '20px',
-        }}>
-          {node.l}
+        }}
+        className="hover:bg-white/5"
+      >
+        <span onClick={toggle} style={{ cursor: hasChildren ? 'pointer' : 'default' }}>
+          {hasChildren ? (expanded ? '▼ ' : '▶ ') : '  '}
         </span>
+        {node.l}
       </div>
-
-      {hasChildren && expanded &&
-        node.e!.map((child, i) => (
-          <SharkdNodeItem
-            key={i}
-            node={child}
-            depth={depth + 1}
-            onSelect={onSelect}
-            selectedRange={selectedRange}
-          />
-        ))
-      }
+      {expanded && hasChildren && node.e!.map((child, i) => (
+        <SharkdNodeItem
+          key={i}
+          node={child}
+          depth={depth + 1}
+          onSelect={onSelect}
+          selectedRange={selectedRange}
+        />
+      ))}
     </div>
   )
 }
@@ -587,9 +568,11 @@ function HexPanel({
     )
   }
 
+  console.log('hexStr received:', JSON.stringify(hexStr).slice(0, 100))
+  console.log('hexStr type:', typeof hexStr)
+
   // Parse continuous hex string "bc2411b0f956..." → numeric byte array.
-  // Guard i+1 < length to skip an incomplete trailing nibble if hexStr has odd length.
-  const hexClean = hexStr.trim()
+  const hexClean = (hexStr ?? '').trim().replace(/\s/g, '')
   const bytes: number[] = []
   for (let i = 0; i + 1 < hexClean.length; i += 2) {
     bytes.push(parseInt(hexClean.slice(i, i + 2), 16))
@@ -691,7 +674,12 @@ function DecodePanel({
     const url = `/api/packet/decode?pod=${encodeURIComponent(pkt.pod)}&interface=${encodeURIComponent(pkt.iface)}&ts=${pkt.ts}`
     fetch(url)
       .then(r => r.json() as Promise<DecodeApiResponse>)
-      .then(d => { if (!cancelled) { setDecodeData(d); setLoading(false) } })
+      .then(d => {
+        console.log('sharkd bytes field:', JSON.stringify(d?.result?.bytes).slice(0, 200))
+        console.log('sharkd bytes type:', typeof d?.result?.bytes)
+        console.log('sharkd bytes length:', d?.result?.bytes?.length)
+        if (!cancelled) { setDecodeData(d); setLoading(false) }
+      })
       .catch(() => { if (!cancelled) setLoading(false) })
 
     return () => { cancelled = true }
