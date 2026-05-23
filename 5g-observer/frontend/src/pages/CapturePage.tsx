@@ -472,7 +472,8 @@ interface SharkdTreeNode {
   f?: string           // Wireshark display filter name, shown as title tooltip
   s?: number           // severity
   h?: [number, number] // [start_byte, byte_length] for hex-panel highlighting
-  e?: SharkdTreeNode[] // children
+  e?: number           // protocol/field ID integer (sharkd internal)
+  n?: SharkdTreeNode[] // children array
 }
 
 interface DecodeApiResponse {
@@ -490,12 +491,14 @@ function SharkdNodeItem({
   onSelect: (range: [number, number] | null) => void
   selectedRange: [number, number] | null
 }) {
-  const hasChildren = (node.e?.length ?? 0) > 0
+  const hasChildren = Array.isArray(node.n) && node.n.length > 0
   const [expanded, setExpanded] = useState(true)
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation()
-    console.log('toggle clicked', node.l, 'hasChildren:', hasChildren)
+    if (import.meta.env.DEV) {
+      console.log('toggle clicked', node.l, 'hasChildren:', hasChildren)
+    }
     if (hasChildren) setExpanded(v => !v)
   }
 
@@ -506,7 +509,9 @@ function SharkdNodeItem({
   const isSelected = selectedRange != null && node.h != null &&
     selectedRange[0] === node.h[0] && selectedRange[1] === node.h[1]
 
-  console.log('node:', node.l, 'e:', node.e, 'hasChildren:', hasChildren)
+  if (import.meta.env.DEV) {
+    console.log('node:', node.l, 'n:', node.n, 'hasChildren:', hasChildren)
+  }
 
   return (
     <div>
@@ -530,7 +535,7 @@ function SharkdNodeItem({
         </span>
         {node.l}
       </div>
-      {expanded && hasChildren && node.e!.map((child, i) => (
+      {expanded && hasChildren && node.n!.map((child, i) => (
         <SharkdNodeItem
           key={i}
           node={child}
@@ -676,7 +681,9 @@ function DecodePanel({
     fetch(url)
       .then(r => r.json() as Promise<DecodeApiResponse>)
       .then(d => {
-        console.log('full sharkd result:', JSON.stringify(d?.result).slice(0, 2000))
+        if (import.meta.env.DEV) {
+          console.log('full sharkd result:', JSON.stringify(d?.result).slice(0, 2000))
+        }
         if (!cancelled) { setDecodeData(d); setLoading(false) }
       })
       .catch(() => { if (!cancelled) setLoading(false) })
