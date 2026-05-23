@@ -1,13 +1,48 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
 import clsx from 'clsx'
+import CapturePage, { type CaptureTab } from '@/pages/CapturePage'
 
 const NAV_LINKS = [
-  { to: '/',             label: 'Topology',       shortcut: '1' },
-  { to: '/infrastructure', label: 'Infrastructure', shortcut: '2' },
-  { to: '/captures',    label: 'Captures',       shortcut: '3' },
+  { to: '/',               label: 'Topology'       },
+  { to: '/infrastructure', label: 'Infrastructure' },
+  { to: '/captures',       label: 'Captures'       },
 ]
 
 export default function Layout() {
+  const location                  = useLocation()
+  const [searchParams]            = useSearchParams()
+  const isCaptures                = location.pathname.startsWith('/captures')
+
+  const [captureTabs,  setCaptureTabs]  = useState<CaptureTab[]>([])
+  const [activeTabId,  setActiveTabId]  = useState<string | null>(null)
+  const [splitMode,    setSplitMode]    = useState(false)
+
+  const addTab = useCallback((pod: string, iface: string) => {
+    setCaptureTabs(prev => {
+      const existing = prev.find(t => t.pod === pod && t.iface === iface)
+      if (existing) {
+        setActiveTabId(existing.id)
+        return prev
+      }
+      if (prev.length >= 8) return prev
+      const id         = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      // podDisplay is computed in CapturePage (which has node data); use pod name heuristic here
+      const podDisplay = pod
+      const tab: CaptureTab = { id, pod, podDisplay, iface }
+      setActiveTabId(id)
+      return [...prev, tab]
+    })
+  }, [])
+
+  // Open a tab when navigating to /captures?pod=X&interface=Y
+  useEffect(() => {
+    if (!isCaptures) return
+    const pod   = searchParams.get('pod')
+    const iface = searchParams.get('interface') ?? 'eth0'
+    if (pod) addTab(pod, iface)
+  }, [isCaptures, searchParams.get('pod'), searchParams.get('interface')]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-bg-primary">
       {/* Top navigation */}
@@ -22,7 +57,7 @@ export default function Layout() {
             <circle cx="16" cy="24" r="2.5" fill="#22c55e"/>
             <circle cx="10" cy="20" r="2.5" fill="#3b82f6"/>
             <circle cx="10" cy="12" r="2.5" fill="#3b82f6"/>
-            <line x1="16" y1="10.5" x2="16" y2="14" stroke="#3b82f6" strokeWidth="1.5"/>
+            <line x1="16" y1="10.5" x2="16" y2="14"   stroke="#3b82f6" strokeWidth="1.5"/>
             <line x1="20" y1="13"   x2="18" y2="14.5" stroke="#3b82f6" strokeWidth="1.5"/>
             <line x1="20" y1="19"   x2="18" y2="17.5" stroke="#3b82f6" strokeWidth="1.5"/>
             <line x1="16" y1="21.5" x2="16" y2="18"   stroke="#3b82f6" strokeWidth="1.5"/>
@@ -55,16 +90,28 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Spacer */}
         <div className="flex-1" />
-
-        {/* Right: version badge */}
         <span className="text-xs text-slate-600 font-mono select-none">v0.1.0</span>
       </header>
 
       {/* Page content */}
       <main className="flex-1 overflow-hidden">
-        <Outlet />
+        {/* Topology / Infrastructure pages — hidden while on /captures */}
+        <div style={{ display: isCaptures ? 'none' : 'flex', flexDirection: 'column', height: '100%' }}>
+          <Outlet />
+        </div>
+
+        {/* Captures — always mounted so WebSocket connections stay alive */}
+        <div style={{ display: isCaptures ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
+          <CapturePage
+            tabs={captureTabs}
+            activeTabId={activeTabId}
+            splitMode={splitMode}
+            onTabsChange={setCaptureTabs}
+            onActiveTabChange={setActiveTabId}
+            onSplitModeChange={setSplitMode}
+          />
+        </div>
       </main>
     </div>
   )

@@ -4,7 +4,6 @@ import { ToastProvider } from '@/components/common/Toast'
 import Layout from '@/components/common/Layout'
 import TopologyPage from '@/pages/TopologyPage'
 import InfrastructurePage from '@/pages/InfrastructurePage'
-import CapturePage from '@/pages/CapturePage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,9 +19,9 @@ const router = createBrowserRouter([
     path: '/',
     element: <Layout />,
     children: [
-      { index: true,          element: <TopologyPage /> },
+      { index: true,            element: <TopologyPage /> },
       { path: 'infrastructure', element: <InfrastructurePage /> },
-      { path: 'captures',      element: <CapturePage /> },
+      { path: 'captures',       element: <></> },  // Layout always mounts CapturePage
     ],
   },
 ])

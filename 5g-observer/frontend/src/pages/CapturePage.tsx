@@ -1,5 +1,5 @@
-﻿import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react'
+import React from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/services/api'
@@ -839,17 +839,33 @@ function wsUrl(pod: string, iface: string): string {
   return `${proto}://${host}/ws/packets?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}`
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── CaptureTab ───────────────────────────────────────────────────────────────
 
-export default function CapturePage() {
-  const [searchParams, setSearchParams] = useSearchParams()
+export interface CaptureTab {
+  id: string
+  pod: string
+  podDisplay: string
+  iface: string
+}
 
-  const [pod,   setPod]   = useState(searchParams.get('pod')       ?? '')
-  const [iface, setIface] = useState(searchParams.get('interface') ?? 'eth0')
+// ─── CaptureTabPanel ─────────────────────────────────────────────────────────
 
+function CaptureTabPanel({
+  tab,
+  ringBufferSize,
+  onStatusChange,
+}: {
+  tab: CaptureTab
+  ringBufferSize: number
+  onStatusChange: (s: ConnStatus) => void
+}) {
   const [packets,   setPackets]   = useState<LivePacket[]>([])
-  const [captureTs, setCaptureTs] = useState(0)   // nanoseconds ts of first captured packet
-  const counterRef = useRef(0)
+  const [captureTs, setCaptureTs] = useState(0)
+  const counterRef  = useRef(0)
+  const wsRef       = useRef<WebSocket | null>(null)
+  const pausedRef   = useRef(false)
+  const bufferRef   = useRef<LivePacket[]>([])
+  const tableRef    = useRef<HTMLDivElement>(null)
 
   const [paused,      setPaused]      = useState(false)
   const [protoFilter, setProtoFilter] = useState<string>('All')
@@ -857,37 +873,16 @@ export default function CapturePage() {
   const [selectedNo,  setSelectedNo]  = useState<number | null>(null)
   const [rangeFrom,   setRangeFrom]   = useState('')
   const [rangeTo,     setRangeTo]     = useState('')
+  const [status,      setStatus]      = useState<ConnStatus>('idle')
 
-  const wsRef     = useRef<WebSocket | null>(null)
-  const pausedRef = useRef(false)
-  const bufferRef = useRef<LivePacket[]>([])
+  const reportStatus = useCallback((s: ConnStatus) => {
+    setStatus(s)
+    onStatusChange(s)
+  }, [onStatusChange])
 
-  const [status, setStatus] = useState<ConnStatus>('idle')
-  const [ringBufferSize, setRingBufferSize] = useState(10_000)
-  const tableRef = useRef<HTMLDivElement>(null)
-
+  // WebSocket lifecycle
   useEffect(() => {
-    fetch('/api/config')
-      .then(r => r.json())
-      .then((cfg: { ringBufferSize: number }) => setRingBufferSize(cfg.ringBufferSize))
-      .catch(() => {})
-  }, [])
-
-  const { data: nodes = [] } = useQuery({
-    queryKey: ['topology-nodes-any'],
-    queryFn:  () => api.topology.get('free5gc').then(g => g.nodes),
-    staleTime: 30_000,
-  })
-
-  const selectedNode = nodes.find(n => n.podName === pod)
-  const nodeIfaces   = selectedNode?.interfaces.map(i => i.interface) ?? []
-
-  // ── WebSocket lifecycle ───────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!pod || !iface) { setStatus('idle'); return }
-
-    setStatus('connecting')
+    reportStatus('connecting')
     setPackets([])
     setCaptureTs(0)
     counterRef.current = 0
@@ -896,61 +891,41 @@ export default function CapturePage() {
     setPaused(false)
     setSelectedNo(null)
 
-    const ws = new WebSocket(wsUrl(pod, iface))
+    const ws = new WebSocket(wsUrl(tab.pod, tab.iface))
     wsRef.current = ws
-
-    ws.onopen  = () => setStatus('live')
-    ws.onerror = () => setStatus('error')
-    ws.onclose = () => setStatus(s => s === 'paused' ? 'paused' : 'stopped')
-
+    ws.onopen  = () => reportStatus('live')
+    ws.onerror = () => reportStatus('error')
+    ws.onclose = () => {
+      setStatus(prev => {
+        const next = prev === 'paused' ? 'paused' : 'stopped'
+        onStatusChange(next)
+        return next
+      })
+    }
     ws.onmessage = (ev: MessageEvent<string>) => {
       const msg = JSON.parse(ev.data) as { type: string; data: WirePkt | WirePkt[] }
       if (msg.type !== 'packets' && msg.type !== 'packet') return
-
       const items = Array.isArray(msg.data) ? msg.data : [msg.data]
-      if (items.length === 0) return
-
+      if (!items.length) return
       const parsed: LivePacket[] = items.map(p => ({
-        no:       ++counterRef.current,
-        ts:       p.ts,
-        srcIP:    p.src_ip,
-        dstIP:    p.dst_ip,
-        srcPort:  p.src_port,
-        dstPort:  p.dst_port,
-        protocol: p.protocol,
-        length:   p.length,
-        info:     p.info,
-        iface:    p.iface,
-        pod:      p.pod,
-        rawHex:   p.raw ? base64ToHex(p.raw) : undefined,
+        no: ++counterRef.current, ts: p.ts,
+        srcIP: p.src_ip, dstIP: p.dst_ip,
+        srcPort: p.src_port, dstPort: p.dst_port,
+        protocol: p.protocol, length: p.length,
+        info: p.info, iface: p.iface, pod: p.pod,
+        rawHex: p.raw ? base64ToHex(p.raw) : undefined,
       }))
-
-      // Record nanosecond timestamp of the first packet in this capture session
-      // captureTs is number (used only for display arithmetic); convert string ts via Number()
-      setCaptureTs(prev => (prev === 0 && parsed.length > 0) ? Number(parsed[0].ts) : prev)
-
+      setCaptureTs(prev => prev === 0 && parsed.length > 0 ? Number(parsed[0].ts) : prev)
       if (pausedRef.current) {
         bufferRef.current = [...bufferRef.current, ...parsed].slice(-RING_MAX)
       } else {
-        setPackets(prev => {
-          const next = [...prev, ...parsed]
-          return next.length > RING_MAX ? next.slice(-RING_MAX) : next
-        })
+        setPackets(prev => { const n = [...prev, ...parsed]; return n.length > RING_MAX ? n.slice(-RING_MAX) : n })
       }
     }
-
     return () => { ws.close(); wsRef.current = null }
-  }, [pod, iface])
+  }, [tab.pod, tab.iface]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const p = new URLSearchParams()
-    if (pod)   p.set('pod', pod)
-    if (iface) p.set('interface', iface)
-    setSearchParams(p, { replace: true })
-  }, [pod, iface, setSearchParams])
-
-  // ── Filtered view ─────────────────────────────────────────────────────────
-
+  // Filtered view
   const displayed = useMemo(() => {
     let list = packets
     if (protoFilter !== 'All') list = list.filter(p => p.protocol === protoFilter)
@@ -958,86 +933,59 @@ export default function CapturePage() {
       const s = search.toLowerCase()
       list = list.filter(p =>
         p.srcIP.includes(s) || p.dstIP.includes(s) ||
-        p.info.toLowerCase().includes(s) || p.protocol.toLowerCase().includes(s),
-      )
+        p.info.toLowerCase().includes(s) || p.protocol.toLowerCase().includes(s))
     }
     return list
   }, [packets, protoFilter, search])
 
-  // ── Custom export range: derive HH:MM:SS defaults from visible packets ──────
-
+  // Export range
   const derivedFrom = useMemo(() =>
-    displayed.length > 0 ? fmtAbsTime(displayed[0].ts).slice(0, 8) : '',
-    [displayed]
-  )
+    displayed.length > 0 ? fmtAbsTime(displayed[0].ts).slice(0, 8) : '', [displayed])
   const derivedTo = useMemo(() =>
-    displayed.length > 0 ? fmtAbsTime(displayed[displayed.length - 1].ts).slice(0, 8) : '',
-    [displayed]
-  )
-  // Reset user overrides when capture target changes
-  useEffect(() => { setRangeFrom(''); setRangeTo('') }, [pod, iface])
+    displayed.length > 0 ? fmtAbsTime(displayed[displayed.length - 1].ts).slice(0, 8) : '', [displayed])
+  useEffect(() => { setRangeFrom(''); setRangeTo('') }, [tab.pod, tab.iface])
 
-  const effectiveFrom = rangeFrom || derivedFrom
-  const effectiveTo   = rangeTo   || derivedTo
-  const refTsNs       = displayed.length > 0 ? displayed[0].ts : '0'
-  const rangeExportUrl = pod && iface && effectiveFrom && effectiveTo && refTsNs !== '0'
-    ? `/api/packets/export?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}&start=${timeInputToNs(effectiveFrom, refTsNs)}&end=${timeInputToNs(effectiveTo, refTsNs)}`
+  const effectiveFrom  = rangeFrom || derivedFrom
+  const effectiveTo    = rangeTo   || derivedTo
+  const refTsNs        = displayed.length > 0 ? displayed[0].ts : '0'
+  const rangeExportUrl = tab.pod && tab.iface && effectiveFrom && effectiveTo && refTsNs !== '0'
+    ? `/api/packets/export?pod=${encodeURIComponent(tab.pod)}&interface=${encodeURIComponent(tab.iface)}&start=${timeInputToNs(effectiveFrom, refTsNs)}&end=${timeInputToNs(effectiveTo, refTsNs)}`
     : undefined
 
-  // ── Virtual scroll ────────────────────────────────────────────────────────
-
+  // Virtual scroll
   const virtualizer = useVirtualizer({
-    count:            displayed.length,
+    count: displayed.length,
     getScrollElement: () => tableRef.current,
-    estimateSize:     () => 22,
-    overscan:         30,
+    estimateSize: () => 22,
+    overscan: 30,
   })
-
   useEffect(() => {
-    if (!paused && displayed.length > 0) {
-      virtualizer.scrollToIndex(displayed.length - 1, { align: 'end' })
-    }
+    if (!paused && displayed.length > 0) virtualizer.scrollToIndex(displayed.length - 1, { align: 'end' })
   }, [displayed.length, paused, virtualizer])
 
-  // ── Controls ──────────────────────────────────────────────────────────────
-
+  // Controls
   const handlePause = useCallback(() => {
-    pausedRef.current = true
-    setPaused(true)
-    setStatus('paused')
-  }, [])
+    pausedRef.current = true; setPaused(true); reportStatus('paused')
+  }, [reportStatus])
 
   const handleResume = useCallback(() => {
     const buf = bufferRef.current
-    bufferRef.current = []
-    pausedRef.current = false
-    setPaused(false)
-    if (buf.length > 0) {
-      setPackets(prev => {
-        const next = [...prev, ...buf]
-        return next.length > RING_MAX ? next.slice(-RING_MAX) : next
-      })
-    }
-    setStatus(wsRef.current?.readyState === WebSocket.OPEN ? 'live' : 'stopped')
-  }, [])
+    bufferRef.current = []; pausedRef.current = false; setPaused(false)
+    if (buf.length > 0) setPackets(prev => { const n = [...prev, ...buf]; return n.length > RING_MAX ? n.slice(-RING_MAX) : n })
+    reportStatus(wsRef.current?.readyState === WebSocket.OPEN ? 'live' : 'stopped')
+  }, [reportStatus])
 
   const handleClear = useCallback(() => {
-    setPackets([])
-    setCaptureTs(0)
-    bufferRef.current  = []
-    counterRef.current = 0
-    setSelectedNo(null)
+    setPackets([]); setCaptureTs(0)
+    bufferRef.current = []; counterRef.current = 0; setSelectedNo(null)
     wsRef.current?.send(JSON.stringify({ type: 'clear' }))
   }, [])
 
-  // Selected packet — search full buffer so decode panel persists through filters
   const selectedPkt = useMemo(
     () => selectedNo !== null ? (packets.find(p => p.no === selectedNo) ?? null) : null,
-    [selectedNo, packets],
-  )
+    [selectedNo, packets])
 
-  // ── Status badge ──────────────────────────────────────────────────────────
-
+  // Status badge
   const statusBadge = () => {
     if (status === 'live') return (
       <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full font-bold text-xs tracking-widest"
@@ -1058,36 +1006,12 @@ export default function CapturePage() {
     return <span className="px-2 py-1 rounded text-xs" style={{ color: '#6e7681' }}>IDLE</span>
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="flex flex-col h-full text-xs" style={{ background: '#0d1117', color: '#e6edf3' }}>
 
-      {/* ── TOP BAR: [selectors] | [controls] | [exports] | [status] ──────── */}
+      {/* TOP BAR */}
       <div className="flex items-center gap-2 px-4 py-2 shrink-0"
         style={{ background: '#161b22', borderBottom: '1px solid #30363d' }}>
-
-        {/* LEFT — NF + interface selectors */}
-        <select value={pod} onChange={e => setPod(e.target.value)}
-          className="text-sm rounded px-2 py-1 outline-none shrink-0"
-          style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', maxWidth: 200 }}>
-          <option value="">— Select NF —</option>
-          {nodes.filter(n => n.nfType !== 'DN').map(n => (
-            <option key={n.id} value={n.podName}>{n.displayName} · {n.podName}</option>
-          ))}
-        </select>
-
-        <select value={iface} onChange={e => setIface(e.target.value)}
-          className="text-sm rounded px-2 py-1 outline-none shrink-0"
-          style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }}>
-          {(nodeIfaces.length > 0 ? nodeIfaces : ['eth0']).map(i => (
-            <option key={i} value={i}>{i}</option>
-          ))}
-        </select>
-
-        <div className="w-px h-5 shrink-0" style={{ background: '#30363d' }} />
-
-        {/* CENTER — capture controls */}
         <div className="flex items-center gap-1.5">
           {paused ? (
             <button onClick={handleResume} className="px-2 py-1 rounded text-xs"
@@ -1105,70 +1029,42 @@ export default function CapturePage() {
             🗑 Clear
           </button>
         </div>
-
         <div className="w-px h-5 shrink-0" style={{ background: '#30363d' }} />
-
-        {/* CENTER — export */}
         <div className="flex items-center gap-2">
           {(['30s', '5min', '1h'] as const).map(lbl => (
-            <a
-              key={lbl}
-              href={pod && iface
-                ? `/api/packets/export?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}&duration=${lbl}`
-                : undefined}
-              download
-              className="px-1.5 py-1 rounded text-xs"
-              style={{
-                background: '#21262d', color: pod ? '#8b949e' : '#4a4a4a',
-                border: '1px solid #30363d', textDecoration: 'none',
-                cursor: pod ? 'pointer' : 'not-allowed',
-                pointerEvents: pod ? 'auto' : 'none',
-              }}
-              title={pod ? `Download pcap — last ${lbl}` : 'Select NF first'}
-            >
+            <a key={lbl}
+              href={`/api/packets/export?pod=${encodeURIComponent(tab.pod)}&interface=${encodeURIComponent(tab.iface)}&duration=${lbl}`}
+              download className="px-1.5 py-1 rounded text-xs"
+              style={{ background: '#21262d', color: '#8b949e', border: '1px solid #30363d', textDecoration: 'none' }}
+              title={`Download pcap — last ${lbl}`}>
               ⬇ {lbl}
             </a>
           ))}
           <div className="w-px h-5 shrink-0" style={{ background: '#30363d' }} />
           <span className="text-xs" style={{ color: '#6e7681' }}>From:</span>
-          <input
-            type="time" step="1"
-            value={effectiveFrom}
-            onChange={e => setRangeFrom(e.target.value)}
+          <input type="time" step="1" value={effectiveFrom} onChange={e => setRangeFrom(e.target.value)}
             className="rounded px-1 py-0.5 text-xs tabular-nums w-24"
-            style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3' }}
-          />
+            style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3' }} />
           <span className="text-xs" style={{ color: '#6e7681' }}>→</span>
-          <input
-            type="time" step="1"
-            value={effectiveTo}
-            onChange={e => setRangeTo(e.target.value)}
+          <input type="time" step="1" value={effectiveTo} onChange={e => setRangeTo(e.target.value)}
             className="rounded px-1 py-0.5 text-xs tabular-nums w-24"
-            style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3' }}
-          />
-          <a
-            href={rangeExportUrl}
-            download
-            className="px-1.5 py-0.5 rounded text-xs"
+            style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3' }} />
+          <a href={rangeExportUrl} download className="px-1.5 py-0.5 rounded text-xs"
             style={{
               background: '#21262d', color: rangeExportUrl ? '#8b949e' : '#4a4a4a',
               border: '1px solid #30363d', textDecoration: 'none',
               cursor: rangeExportUrl ? 'pointer' : 'not-allowed',
               pointerEvents: rangeExportUrl ? 'auto' : 'none',
             }}
-            title={rangeExportUrl ? 'Download pcap for selected range' : 'Select NF and wait for packets'}
-          >
+            title={rangeExportUrl ? 'Download pcap for selected range' : 'Waiting for packets'}>
             ⬇ Range
           </a>
         </div>
-
         <div className="flex-1" />
-
-        {/* RIGHT — live status badge */}
         <div className="flex items-center shrink-0">{statusBadge()}</div>
       </div>
 
-      {/* ── FILTER BAR ─────────────────────────────────────────────────────── */}
+      {/* FILTER BAR */}
       <div className="flex items-center gap-1.5 px-4 py-1.5 shrink-0"
         style={{ background: '#0d1117', borderBottom: '1px solid #21262d' }}>
         {PROTOCOLS.map(p => (
@@ -1189,80 +1085,51 @@ export default function CapturePage() {
           style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3' }} />
       </div>
 
-      {/* ── MAIN AREA ────────────────────────────────────────────────────────── */}
-      {!pod ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3" style={{ color: '#6e7681' }}>
-          <span className="text-4xl opacity-20">📡</span>
-          <span className="text-sm">Select a Network Function to start live capture</span>
-          <span style={{ color: '#30363d' }}>or click an interface dot in the Topology view</span>
+      {/* MAIN AREA */}
+      <div className="flex flex-col flex-1 min-h-0">
+        <div className="flex items-center gap-2 px-3 py-1 font-mono text-[10px] uppercase shrink-0"
+          style={{ background: '#161b22', color: '#6e7681', borderBottom: '1px solid #21262d' }}>
+          <span className="w-10 shrink-0 text-right">No.</span>
+          <span className="w-32 shrink-0">Time (UTC)</span>
+          <span className="w-36 shrink-0">Source</span>
+          <span className="w-36 shrink-0">Destination</span>
+          <span className="w-20 shrink-0">Protocol</span>
+          <span className="w-12 shrink-0 text-right">Length</span>
+          <span className="flex-1">Info</span>
         </div>
-      ) : (
-        <div className="flex flex-col flex-1 min-h-0">
-
-          {/* Column headers */}
-          <div className="flex items-center gap-2 px-3 py-1 font-mono text-[10px] uppercase shrink-0"
-            style={{ background: '#161b22', color: '#6e7681', borderBottom: '1px solid #21262d' }}>
-            <span className="w-10 shrink-0 text-right">No.</span>
-            <span className="w-32 shrink-0">Time (UTC)</span>
-            <span className="w-36 shrink-0">Source</span>
-            <span className="w-36 shrink-0">Destination</span>
-            <span className="w-20 shrink-0">Protocol</span>
-            <span className="w-12 shrink-0 text-right">Length</span>
-            <span className="flex-1">Info</span>
+        <div ref={tableRef} className="flex-1 overflow-y-auto font-mono"
+          style={{ background: '#0d1117' }}>
+          <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+            {virtualizer.getVirtualItems().map(item => {
+              const pkt        = displayed[item.index]!
+              const isSelected = pkt.no === selectedNo
+              return (
+                <div key={item.key}
+                  onClick={() => setSelectedNo(prev => prev === pkt.no ? null : pkt.no)}
+                  style={{
+                    position: 'absolute', top: item.start, width: '100%', height: item.size,
+                    background: rowBg(pkt.protocol, isSelected),
+                    borderLeft: isSelected ? '3px solid #58a6ff' : '3px solid transparent',
+                  }}
+                  className="flex items-center gap-2 px-3 cursor-pointer hover:brightness-125">
+                  <span className="w-10 shrink-0 text-right select-text" style={{ color: '#6e7681' }}>{pkt.no}</span>
+                  <span className="w-32 shrink-0 tabular-nums select-text" style={{ color: '#8b949e' }}>{fmtAbsTime(pkt.ts)}</span>
+                  <span className="w-36 shrink-0 truncate select-text">{pkt.srcIP}</span>
+                  <span className="w-36 shrink-0 truncate select-text">{pkt.dstIP}</span>
+                  <span className="w-20 shrink-0 font-bold select-text" style={{ color: protoColor(pkt.protocol) }}>{pkt.protocol}</span>
+                  <span className="w-12 shrink-0 text-right select-text" style={{ color: '#6e7681' }}>{pkt.length}</span>
+                  <span className="flex-1 truncate select-text" style={{ color: '#c9d1d9' }}>{pkt.info}</span>
+                </div>
+              )
+            })}
           </div>
-
-          {/* Virtualized packet rows */}
-          <div ref={tableRef} className="flex-1 overflow-y-auto font-mono"
-            style={{ background: '#0d1117' }}>
-            <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-              {virtualizer.getVirtualItems().map(item => {
-                const pkt        = displayed[item.index]!
-                const color      = protoColor(pkt.protocol)
-                const isSelected = pkt.no === selectedNo
-                return (
-                  <div
-                    key={item.key}
-                    onClick={() => setSelectedNo(prev => prev === pkt.no ? null : pkt.no)}
-                    style={{
-                      position:   'absolute',
-                      top:        item.start,
-                      width:      '100%',
-                      height:     item.size,
-                      background: rowBg(pkt.protocol, isSelected),
-                      borderLeft: isSelected ? '3px solid #58a6ff' : '3px solid transparent',
-                    }}
-                    className="flex items-center gap-2 px-3 cursor-pointer hover:brightness-125"
-                  >
-                    <span className="w-10 shrink-0 text-right select-text"
-                      style={{ color: '#6e7681' }}>{pkt.no}</span>
-                    <span className="w-32 shrink-0 tabular-nums select-text"
-                      style={{ color: '#8b949e' }}>{fmtAbsTime(pkt.ts)}</span>
-                    <span className="w-36 shrink-0 truncate select-text">{pkt.srcIP}</span>
-                    <span className="w-36 shrink-0 truncate select-text">{pkt.dstIP}</span>
-                    <span className="w-20 shrink-0 font-bold select-text"
-                      style={{ color }}>{pkt.protocol}</span>
-                    <span className="w-12 shrink-0 text-right select-text"
-                      style={{ color: '#6e7681' }}>{pkt.length}</span>
-                    <span className="flex-1 truncate select-text"
-                      style={{ color: '#c9d1d9' }}>{pkt.info}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Decode panel — shown when a row is selected */}
-          {selectedPkt && (
-            <DecodePanel
-              pkt={selectedPkt}
-              startNs={captureTs}
-              onClose={() => setSelectedNo(null)}
-            />
-          )}
         </div>
-      )}
+        {selectedPkt && (
+          <DecodePanel pkt={selectedPkt} startNs={captureTs} onClose={() => setSelectedNo(null)} />
+        )}
+      </div>
 
-      {/* ── STATUS BAR ──────────────────────────────────────────────────────── */}
+      {/* STATUS BAR */}
       <div className="flex items-center gap-4 px-4 py-1 shrink-0 font-mono"
         style={{ background: '#161b22', borderTop: '1px solid #30363d', color: '#8b949e' }}>
         <span>Pkts: <strong style={{ color: '#e6edf3' }}>{packets.length}</strong></span>
@@ -1271,6 +1138,267 @@ export default function CapturePage() {
         <span style={{ color: '#30363d' }}>│</span>
         <span>Buf: <strong style={{ color: '#e6edf3' }}>{packets.length}</strong>/{ringBufferSize.toLocaleString()}</span>
       </div>
+    </div>
+  )
+}
+
+// ─── CapturePage ──────────────────────────────────────────────────────────────
+
+export default function CapturePage({
+  tabs,
+  activeTabId,
+  splitMode,
+  onTabsChange,
+  onActiveTabChange,
+  onSplitModeChange,
+}: {
+  tabs: CaptureTab[]
+  activeTabId: string | null
+  splitMode: boolean
+  onTabsChange: (tabs: CaptureTab[]) => void
+  onActiveTabChange: (id: string | null) => void
+  onSplitModeChange: (v: boolean) => void
+}) {
+  const [ringBufferSize, setRingBufferSize] = useState(10_000)
+  const [tabStatuses,    setTabStatuses]    = useState<Record<string, ConnStatus>>({})
+  const [showAdd,        setShowAdd]        = useState(false)
+  const [newPod,         setNewPod]         = useState('')
+  const [newIface,       setNewIface]       = useState('eth0')
+  const [splitWidths,    setSplitWidths]    = useState<number[]>([])
+  const splitContainerRef = useRef<HTMLDivElement>(null)
+  const splitDragRef = useRef<{ idx: number; x0: number; totalW: number; widths: number[] } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then((cfg: { ringBufferSize: number }) => setRingBufferSize(cfg.ringBufferSize))
+      .catch(() => {})
+  }, [])
+
+  const { data: nodes = [] } = useQuery({
+    queryKey: ['topology-nodes-any'],
+    queryFn:  () => api.topology.get('free5gc').then(g => g.nodes),
+    staleTime: 30_000,
+  })
+
+  // Reset to equal widths when tab count changes
+  useEffect(() => {
+    if (tabs.length > 0) setSplitWidths(tabs.map(() => 100 / tabs.length))
+  }, [tabs.length])
+
+  // Split drag resize
+  useEffect(() => {
+    const mv = (e: MouseEvent) => {
+      if (!splitDragRef.current) return
+      const { idx, x0, totalW, widths } = splitDragRef.current
+      const delta = ((e.clientX - x0) / totalW) * 100
+      const MIN = 15
+      const next = [...widths]
+      next[idx]     = Math.max(MIN, Math.min(widths[idx] + delta, widths[idx] + widths[idx + 1] - MIN))
+      next[idx + 1] = widths[idx] + widths[idx + 1] - next[idx]
+      setSplitWidths(next)
+    }
+    const up = () => { splitDragRef.current = null }
+    window.addEventListener('mousemove', mv)
+    window.addEventListener('mouseup', up)
+    return () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up) }
+  }, [])
+
+  const effectiveWidths = splitWidths.length === tabs.length
+    ? splitWidths
+    : tabs.map(() => 100 / tabs.length)
+
+  const selectedAddNode  = (nodes as any[]).find(n => n.podName === newPod)
+  const addNodeIfaces    = (selectedAddNode?.interfaces.map((i: any) => i.interface as string)) ?? ['eth0']
+
+  const handleStatusChange = useCallback((id: string, s: ConnStatus) => {
+    setTabStatuses(prev => ({ ...prev, [id]: s }))
+  }, [])
+
+  const addTab = useCallback((pod: string, iface: string) => {
+    const existing = tabs.find(t => t.pod === pod && t.iface === iface)
+    if (existing) { onActiveTabChange(existing.id); return }
+    if (tabs.length >= 8) return
+    const node       = (nodes as any[]).find(n => n.podName === pod)
+    const podDisplay = node?.displayName ?? pod.split('-').filter((s: string) => s !== 'free5gc' && !/^[0-9a-f]{5,}$/.test(s)).slice(0, 2).join('-')
+    const id         = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    onTabsChange([...tabs, { id, pod, podDisplay, iface }])
+    onActiveTabChange(id)
+  }, [tabs, nodes, onTabsChange, onActiveTabChange])
+
+  const closeTab = useCallback((id: string) => {
+    const idx     = tabs.findIndex(t => t.id === id)
+    const newTabs = tabs.filter(t => t.id !== id)
+    onTabsChange(newTabs)
+    if (activeTabId === id) {
+      const next = newTabs[Math.min(idx, newTabs.length - 1)]
+      onActiveTabChange(next?.id ?? null)
+    }
+  }, [tabs, activeTabId, onTabsChange, onActiveTabChange])
+
+  const dotColor = (id: string) => {
+    const s = tabStatuses[id]
+    if (s === 'live')                       return '#3fb950'
+    if (s === 'paused')                     return '#8b949e'
+    if (s === 'error' || s === 'stopped')   return '#f85149'
+    return '#6e7681'
+  }
+
+  return (
+    <div className="flex flex-col h-full" style={{ background: '#0d1117' }}>
+
+      {/* ── Tab bar ── */}
+      <div className="flex items-center shrink-0 overflow-x-auto"
+        style={{ background: '#0d1117', borderBottom: '1px solid #30363d', minHeight: 36 }}>
+        {tabs.map(tab => {
+          const isActive = tab.id === activeTabId
+          return (
+            <div key={tab.id}
+              onClick={() => onActiveTabChange(tab.id)}
+              className="group flex items-center gap-1.5 px-3 py-2 cursor-pointer shrink-0"
+              style={{
+                background:   isActive ? '#1e3a5f' : '#161b22',
+                borderRight:  '1px solid #30363d',
+                borderBottom: isActive ? '2px solid #58a6ff' : '2px solid transparent',
+              }}
+              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#1c2128' }}
+              onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#161b22' }}>
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: dotColor(tab.id) }} />
+              <span className="text-xs font-mono whitespace-nowrap"
+                style={{ color: isActive ? '#e6edf3' : '#8b949e' }}>
+                {tab.podDisplay}:{tab.iface}
+              </span>
+              <button
+                onClick={e => { e.stopPropagation(); closeTab(tab.id) }}
+                className="ml-1 text-[10px] opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
+                style={{ color: '#6e7681' }}>
+                ×
+              </button>
+            </div>
+          )
+        })}
+
+        {/* Add tab button */}
+        <button
+          onClick={() => { if (tabs.length < 8) setShowAdd(v => !v) }}
+          title={tabs.length >= 8 ? 'Maximum 8 tabs reached' : 'Add capture tab'}
+          className="flex items-center px-3 py-2 text-sm font-bold shrink-0"
+          style={{
+            color:  tabs.length >= 8 ? '#4a4a4a' : '#8b949e',
+            cursor: tabs.length >= 8 ? 'not-allowed' : 'pointer',
+          }}>
+          +
+        </button>
+
+        <div className="flex-1" />
+
+        {/* Split toggle — only shown when 2+ tabs exist */}
+        {tabs.length > 1 && (
+          <button
+            onClick={() => onSplitModeChange(!splitMode)}
+            className="flex items-center gap-1.5 px-3 py-1.5 mx-2 rounded text-xs"
+            style={{
+              background: splitMode ? '#1f6feb' : '#21262d',
+              border:     `1px solid ${splitMode ? '#388bfd' : '#30363d'}`,
+              color:      splitMode ? '#e6edf3' : '#8b949e',
+            }}
+            title={splitMode ? 'Exit split view' : 'Enter split view'}>
+            {splitMode ? '□ Single' : '⊞ Split'}
+          </button>
+        )}
+      </div>
+
+      {/* ── Add tab row ── */}
+      {showAdd && (
+        <div className="flex items-center gap-2 px-4 py-2 shrink-0"
+          style={{ background: '#161b22', borderBottom: '1px solid #30363d' }}>
+          <select value={newPod} onChange={e => { setNewPod(e.target.value); setNewIface('eth0') }}
+            className="text-xs rounded px-2 py-1 outline-none"
+            style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', maxWidth: 240 }}>
+            <option value="">— Select NF —</option>
+            {(nodes as any[]).filter(n => n.nfType !== 'DN').map(n => (
+              <option key={n.id} value={n.podName}>{n.displayName} · {n.podName}</option>
+            ))}
+          </select>
+          <select value={newIface} onChange={e => setNewIface(e.target.value)}
+            className="text-xs rounded px-2 py-1 outline-none"
+            style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }}>
+            {addNodeIfaces.map((i: string) => <option key={i} value={i}>{i}</option>)}
+          </select>
+          <button
+            disabled={!newPod}
+            onClick={() => { if (newPod) { addTab(newPod, newIface); setShowAdd(false); setNewPod('') } }}
+            className="px-3 py-1 rounded text-xs"
+            style={{
+              background: newPod ? '#238636' : '#21262d',
+              color:      newPod ? '#f0f6fc' : '#4a4a4a',
+              border:     '1px solid #30363d',
+            }}>
+            ▶ Start
+          </button>
+          <button onClick={() => { setShowAdd(false); setNewPod('') }}
+            className="px-2 py-1 rounded text-xs"
+            style={{ background: '#21262d', color: '#8b949e', border: '1px solid #30363d' }}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* ── Panels ── */}
+      {tabs.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3"
+          style={{ color: '#6e7681' }}>
+          <span className="text-4xl opacity-20">📡</span>
+          <span className="text-sm">No capture sessions open</span>
+          <button onClick={() => setShowAdd(true)} className="px-4 py-2 rounded text-sm"
+            style={{ background: '#238636', color: '#f0f6fc', border: '1px solid #2ea043' }}>
+            + New Capture
+          </button>
+        </div>
+      ) : (
+        <div ref={splitContainerRef} className="flex flex-1 min-h-0 overflow-hidden">
+          {tabs.flatMap((tab, idx) => {
+            const visible = splitMode || tab.id === activeTabId
+            const w = effectiveWidths[idx] ?? (100 / tabs.length)
+            const elements = [
+              <div key={tab.id} style={{
+                display:       visible ? 'flex' : 'none',
+                flexDirection: 'column',
+                width:         splitMode ? `${w}%` : '100%',
+                minWidth:      splitMode ? 300 : undefined,
+                overflow:      'hidden',
+                flexShrink:    splitMode ? 0 : undefined,
+              }}>
+                <CaptureTabPanel
+                  tab={tab}
+                  ringBufferSize={ringBufferSize}
+                  onStatusChange={s => handleStatusChange(tab.id, s)}
+                />
+              </div>,
+            ]
+            if (splitMode && idx < tabs.length - 1) {
+              elements.push(
+                <div key={`divider-${idx}`}
+                  className="shrink-0 cursor-ew-resize"
+                  style={{ width: 4, background: '#30363d' }}
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    splitDragRef.current = {
+                      idx,
+                      x0: e.clientX,
+                      totalW: splitContainerRef.current?.clientWidth ?? window.innerWidth,
+                      widths: [...effectiveWidths],
+                    }
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#58a6ff' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#30363d' }}
+                />
+              )
+            }
+            return elements
+          })}
+        </div>
+      )}
     </div>
   )
 }
