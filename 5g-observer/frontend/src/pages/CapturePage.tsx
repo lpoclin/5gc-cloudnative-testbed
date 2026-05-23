@@ -1088,7 +1088,7 @@ export default function CapturePage() {
             </button>
           ) : (
             <button onClick={handlePause} className="px-2 py-1 rounded text-xs"
-              style={{ background: '#21262d', color: '#e6edf3', border: '1px solid #30363d' }}>
+              style={{ background: '#21262d', color: '#e6edf3', border: '1px solid #30363d', borderLeft: status === 'live' ? '3px solid #ef4444' : '1px solid #30363d' }}>
               ⏸ Pause
             </button>
           )}
@@ -1101,60 +1101,57 @@ export default function CapturePage() {
         <div className="w-px h-5 shrink-0" style={{ background: '#30363d' }} />
 
         {/* CENTER — export */}
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1">
-            {(['30s', '5min', '1h'] as const).map(lbl => (
-              <a
-                key={lbl}
-                href={pod && iface
-                  ? `/api/packets/export?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}&duration=${lbl}`
-                  : undefined}
-                download
-                className="px-1.5 py-1 rounded text-xs"
-                style={{
-                  background: '#21262d', color: pod ? '#8b949e' : '#4a4a4a',
-                  border: '1px solid #30363d', textDecoration: 'none',
-                  cursor: pod ? 'pointer' : 'not-allowed',
-                  pointerEvents: pod ? 'auto' : 'none',
-                }}
-                title={pod ? `Download pcap — last ${lbl}` : 'Select NF first'}
-              >
-                ⬇ {lbl}
-              </a>
-            ))}
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-xs" style={{ color: '#6e7681' }}>From:</span>
-            <input
-              type="time" step="1"
-              value={effectiveFrom}
-              onChange={e => setRangeFrom(e.target.value)}
-              className="rounded px-1 py-0.5 text-xs tabular-nums"
-              style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3', width: 90 }}
-            />
-            <span className="text-xs" style={{ color: '#6e7681' }}>→</span>
-            <input
-              type="time" step="1"
-              value={effectiveTo}
-              onChange={e => setRangeTo(e.target.value)}
-              className="rounded px-1 py-0.5 text-xs tabular-nums"
-              style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3', width: 90 }}
-            />
+        <div className="flex items-center gap-2">
+          {(['30s', '5min', '1h'] as const).map(lbl => (
             <a
-              href={rangeExportUrl}
+              key={lbl}
+              href={pod && iface
+                ? `/api/packets/export?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}&duration=${lbl}`
+                : undefined}
               download
-              className="px-1.5 py-0.5 rounded text-xs"
+              className="px-1.5 py-1 rounded text-xs"
               style={{
-                background: '#21262d', color: rangeExportUrl ? '#8b949e' : '#4a4a4a',
+                background: '#21262d', color: pod ? '#8b949e' : '#4a4a4a',
                 border: '1px solid #30363d', textDecoration: 'none',
-                cursor: rangeExportUrl ? 'pointer' : 'not-allowed',
-                pointerEvents: rangeExportUrl ? 'auto' : 'none',
+                cursor: pod ? 'pointer' : 'not-allowed',
+                pointerEvents: pod ? 'auto' : 'none',
               }}
-              title={rangeExportUrl ? 'Download pcap for selected range' : 'Select NF and wait for packets'}
+              title={pod ? `Download pcap — last ${lbl}` : 'Select NF first'}
             >
-              ⬇ Range
+              ⬇ {lbl}
             </a>
-          </div>
+          ))}
+          <div className="w-px h-5 shrink-0" style={{ background: '#30363d' }} />
+          <span className="text-xs" style={{ color: '#6e7681' }}>From:</span>
+          <input
+            type="time" step="1"
+            value={effectiveFrom}
+            onChange={e => setRangeFrom(e.target.value)}
+            className="rounded px-1 py-0.5 text-xs tabular-nums w-24"
+            style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3' }}
+          />
+          <span className="text-xs" style={{ color: '#6e7681' }}>→</span>
+          <input
+            type="time" step="1"
+            value={effectiveTo}
+            onChange={e => setRangeTo(e.target.value)}
+            className="rounded px-1 py-0.5 text-xs tabular-nums w-24"
+            style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3' }}
+          />
+          <a
+            href={rangeExportUrl}
+            download
+            className="px-1.5 py-0.5 rounded text-xs"
+            style={{
+              background: '#21262d', color: rangeExportUrl ? '#8b949e' : '#4a4a4a',
+              border: '1px solid #30363d', textDecoration: 'none',
+              cursor: rangeExportUrl ? 'pointer' : 'not-allowed',
+              pointerEvents: rangeExportUrl ? 'auto' : 'none',
+            }}
+            title={rangeExportUrl ? 'Download pcap for selected range' : 'Select NF and wait for packets'}
+          >
+            ⬇ Range
+          </a>
         </div>
 
         <div className="flex-1" />
