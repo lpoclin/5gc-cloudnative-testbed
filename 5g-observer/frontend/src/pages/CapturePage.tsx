@@ -57,8 +57,19 @@ function fmtRelTime(ts: string, startNs: number): string {
   return `${s}.${String(us).padStart(6, '0')}`
 }
 
-/** Arrival time in HH:MM:SS.ffffff.
- *  ts is the nanosecond string from the server; Number() is used for display arithmetic only. */
+/** Absolute UTC time HH:MM:SS.ffffff — BigInt arithmetic to avoid float64 precision loss. */
+function fmtAbsTime(tsNs: string): string {
+  const ns  = BigInt(tsNs)
+  const ms  = Number(ns / 1_000_000n)
+  const d   = new Date(ms)
+  const hh  = d.getUTCHours().toString().padStart(2, '0')
+  const mm  = d.getUTCMinutes().toString().padStart(2, '0')
+  const ss  = d.getUTCSeconds().toString().padStart(2, '0')
+  const us  = Math.floor(Number(ns % 1_000_000_000n) / 1000).toString().padStart(6, '0')
+  return `${hh}:${mm}:${ss}.${us}`
+}
+
+/** Arrival time in HH:MM:SS.ffffff — used in detail panel; Number() is sufficient for display. */
 function fmtArrival(ts: string): string {
   const tsNs = Number(ts)
   const d  = new Date(tsNs / 1_000_000)
@@ -67,6 +78,16 @@ function fmtArrival(ts: string): string {
   const ss = d.getUTCSeconds().toString().padStart(2, '0')
   const us = Math.floor((tsNs % 1_000_000_000) / 1_000).toString().padStart(6, '0')
   return `${hh}:${mm}:${ss}.${us}`
+}
+
+/** Convert a time input string "HH:MM:SS" to nanoseconds, using referenceTsNs for the date. */
+function timeInputToNs(timeStr: string, referenceTsNs: string): bigint {
+  const refMs   = Number(BigInt(referenceTsNs) / 1_000_000n)
+  const refDate = new Date(refMs)
+  const [h, m, s] = timeStr.split(':').map(Number)
+  const result = new Date(refDate)
+  result.setUTCHours(h, m, s, 0)
+  return BigInt(result.getTime()) * 1_000_000n
 }
 
 /** Row background per protocol (dark theme tints per spec) */
@@ -834,6 +855,8 @@ export default function CapturePage() {
   const [protoFilter, setProtoFilter] = useState<string>('All')
   const [search,      setSearch]      = useState('')
   const [selectedNo,  setSelectedNo]  = useState<number | null>(null)
+  const [rangeFrom,   setRangeFrom]   = useState('')
+  const [rangeTo,     setRangeTo]     = useState('')
 
   const wsRef     = useRef<WebSocket | null>(null)
   const pausedRef = useRef(false)
@@ -932,6 +955,26 @@ export default function CapturePage() {
     }
     return list
   }, [packets, protoFilter, search])
+
+  // ── Custom export range: derive HH:MM:SS defaults from visible packets ──────
+
+  const derivedFrom = useMemo(() =>
+    displayed.length > 0 ? fmtAbsTime(displayed[0].ts).slice(0, 8) : '',
+    [displayed]
+  )
+  const derivedTo = useMemo(() =>
+    displayed.length > 0 ? fmtAbsTime(displayed[displayed.length - 1].ts).slice(0, 8) : '',
+    [displayed]
+  )
+  // Reset user overrides when capture target changes
+  useEffect(() => { setRangeFrom(''); setRangeTo('') }, [pod, iface])
+
+  const effectiveFrom = rangeFrom || derivedFrom
+  const effectiveTo   = rangeTo   || derivedTo
+  const refTsNs       = displayed.length > 0 ? displayed[0].ts : '0'
+  const rangeExportUrl = pod && iface && effectiveFrom && effectiveTo && refTsNs !== '0'
+    ? `/api/packets/export?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}&start=${timeInputToNs(effectiveFrom, refTsNs)}&end=${timeInputToNs(effectiveTo, refTsNs)}`
+    : undefined
 
   // ── Virtual scroll ────────────────────────────────────────────────────────
 
@@ -1058,26 +1101,60 @@ export default function CapturePage() {
         <div className="w-px h-5 shrink-0" style={{ background: '#30363d' }} />
 
         {/* CENTER — export */}
-        <div className="flex items-center gap-1">
-          {(['30s', '5min', '1h'] as const).map(lbl => (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1">
+            {(['30s', '5min', '1h'] as const).map(lbl => (
+              <a
+                key={lbl}
+                href={pod && iface
+                  ? `/api/packets/export?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}&duration=${lbl}`
+                  : undefined}
+                download
+                className="px-1.5 py-1 rounded text-xs"
+                style={{
+                  background: '#21262d', color: pod ? '#8b949e' : '#4a4a4a',
+                  border: '1px solid #30363d', textDecoration: 'none',
+                  cursor: pod ? 'pointer' : 'not-allowed',
+                  pointerEvents: pod ? 'auto' : 'none',
+                }}
+                title={pod ? `Download pcap — last ${lbl}` : 'Select NF first'}
+              >
+                ⬇ {lbl}
+              </a>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs" style={{ color: '#6e7681' }}>From:</span>
+            <input
+              type="time" step="1"
+              value={effectiveFrom}
+              onChange={e => setRangeFrom(e.target.value)}
+              className="rounded px-1 py-0.5 text-xs tabular-nums"
+              style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3', width: 90 }}
+            />
+            <span className="text-xs" style={{ color: '#6e7681' }}>→</span>
+            <input
+              type="time" step="1"
+              value={effectiveTo}
+              onChange={e => setRangeTo(e.target.value)}
+              className="rounded px-1 py-0.5 text-xs tabular-nums"
+              style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3', width: 90 }}
+            />
             <a
-              key={lbl}
-              href={pod && iface
-                ? `/api/packets/export?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}&duration=${lbl}`
-                : undefined}
+              href={rangeExportUrl}
               download
-              className="px-1.5 py-1 rounded text-xs"
+              className="px-1.5 py-0.5 rounded text-xs"
               style={{
-                background: '#21262d', color: pod ? '#8b949e' : '#4a4a4a',
+                background: '#21262d', color: rangeExportUrl ? '#8b949e' : '#4a4a4a',
                 border: '1px solid #30363d', textDecoration: 'none',
-                cursor: pod ? 'pointer' : 'not-allowed',
-                pointerEvents: pod ? 'auto' : 'none',
+                cursor: rangeExportUrl ? 'pointer' : 'not-allowed',
+                pointerEvents: rangeExportUrl ? 'auto' : 'none',
               }}
-              title={pod ? `Download pcap — last ${lbl}` : 'Select NF first'}
+              title={rangeExportUrl ? 'Download pcap for selected range' : 'Select NF and wait for packets'}
             >
-              ⬇ {lbl}
+              ⬇ Range
             </a>
-          ))}
+          </div>
         </div>
 
         <div className="flex-1" />
@@ -1121,7 +1198,7 @@ export default function CapturePage() {
           <div className="flex items-center gap-2 px-3 py-1 font-mono text-[10px] uppercase shrink-0"
             style={{ background: '#161b22', color: '#6e7681', borderBottom: '1px solid #21262d' }}>
             <span className="w-10 shrink-0 text-right">No.</span>
-            <span className="w-24 shrink-0">Time</span>
+            <span className="w-32 shrink-0">Time (UTC)</span>
             <span className="w-36 shrink-0">Source</span>
             <span className="w-36 shrink-0">Destination</span>
             <span className="w-20 shrink-0">Protocol</span>
@@ -1153,8 +1230,8 @@ export default function CapturePage() {
                   >
                     <span className="w-10 shrink-0 text-right select-text"
                       style={{ color: '#6e7681' }}>{pkt.no}</span>
-                    <span className="w-24 shrink-0 tabular-nums select-text"
-                      style={{ color: '#8b949e' }}>{fmtRelTime(pkt.ts, captureTs)}</span>
+                    <span className="w-32 shrink-0 tabular-nums select-text"
+                      style={{ color: '#8b949e' }}>{fmtAbsTime(pkt.ts)}</span>
                     <span className="w-36 shrink-0 truncate select-text">{pkt.srcIP}</span>
                     <span className="w-36 shrink-0 truncate select-text">{pkt.dstIP}</span>
                     <span className="w-20 shrink-0 font-bold select-text"

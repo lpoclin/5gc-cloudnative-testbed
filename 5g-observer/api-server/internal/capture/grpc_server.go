@@ -117,6 +117,24 @@ func (r *pktRingBuf) getAfterTs(cutoffNs int64) []PktEntry {
 	return out
 }
 
+// getInRange returns all packets with startNs <= tsNs <= endNs, in insertion order.
+func (r *pktRingBuf) getInRange(startNs, endNs int64) []PktEntry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []PktEntry
+	for i := r.size - 1; i >= 0; i-- {
+		idx := (r.head - 1 - i + r.capacity) % r.capacity
+		ts := r.entries[idx].TsNs
+		if ts >= startNs && ts <= endNs {
+			e := r.entries[idx]
+			cp := make([]byte, len(e.Raw))
+			copy(cp, e.Raw)
+			out = append(out, PktEntry{TsNs: e.TsNs, Raw: cp})
+		}
+	}
+	return out
+}
+
 // Server implements pb.CaptureServiceServer and fans packets to subscribers.
 type Server struct {
 	pb.UnimplementedCaptureServiceServer
@@ -331,6 +349,18 @@ func (s *Server) GetPacketsAfterTs(pod, iface string, cutoffNs int64) ([]PktEntr
 		return nil, 1
 	}
 	return ring.getAfterTs(cutoffNs), ring.linkType
+}
+
+// GetPacketsInRange returns all raw packets with startNs <= tsNs <= endNs for export.
+func (s *Server) GetPacketsInRange(pod, iface string, startNs, endNs int64) ([]PktEntry, uint32) {
+	key := wildcardKey{PodName: pod, Iface: iface}
+	s.pktRingMu.RLock()
+	ring, exists := s.pktRings[key]
+	s.pktRingMu.RUnlock()
+	if !exists {
+		return nil, 1
+	}
+	return ring.getInRange(startNs, endNs), ring.linkType
 }
 
 // StreamPackets receives packet batches from a capture-agent (client-streaming).

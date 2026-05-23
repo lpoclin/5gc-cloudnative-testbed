@@ -140,6 +140,8 @@ func ExportPacketsHandler(cap *capture.Server) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		pod      := c.Query("pod")
 		iface    := c.Query("interface")
+		startStr := c.Query("start")
+		endStr   := c.Query("end")
 		duration := c.Query("duration")
 
 		if pod == "" || iface == "" {
@@ -147,17 +149,30 @@ func ExportPacketsHandler(cap *capture.Server) gin.HandlerFunc {
 			return
 		}
 
-		var cutoff time.Time
-		switch duration {
-		case "5m":
-			cutoff = time.Now().Add(-5 * time.Minute)
-		case "1h":
-			cutoff = time.Now().Add(-time.Hour)
-		default: // "30s" or empty
-			cutoff = time.Now().Add(-30 * time.Second)
+		var pkts []capture.PktEntry
+		var linkType uint32
+
+		if startStr != "" && endStr != "" {
+			startNs, err1 := strconv.ParseInt(startStr, 10, 64)
+			endNs,   err2 := strconv.ParseInt(endStr,   10, 64)
+			if err1 != nil || err2 != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid start/end params"})
+				return
+			}
+			pkts, linkType = cap.GetPacketsInRange(pod, iface, startNs, endNs)
+		} else {
+			var cutoff time.Time
+			switch duration {
+			case "5m":
+				cutoff = time.Now().Add(-5 * time.Minute)
+			case "1h":
+				cutoff = time.Now().Add(-time.Hour)
+			default: // "30s" or empty
+				cutoff = time.Now().Add(-30 * time.Second)
+			}
+			pkts, linkType = cap.GetPacketsAfterTs(pod, iface, cutoff.UnixNano())
 		}
 
-		pkts, linkType := cap.GetPacketsAfterTs(pod, iface, cutoff.UnixNano())
 		if len(pkts) == 0 {
 			c.JSON(http.StatusNotFound, gin.H{"error": "no packets in requested time range"})
 			return
