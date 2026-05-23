@@ -506,6 +506,8 @@ function SharkdNodeItem({
   const isSelected = selectedRange != null && node.h != null &&
     selectedRange[0] === node.h[0] && selectedRange[1] === node.h[1]
 
+  console.log('node:', node.l, 'e:', node.e, 'hasChildren:', hasChildren)
+
   return (
     <div>
       <div
