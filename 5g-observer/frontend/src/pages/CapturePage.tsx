@@ -676,9 +676,7 @@ function DecodePanel({
     fetch(url)
       .then(r => r.json() as Promise<DecodeApiResponse>)
       .then(d => {
-        console.log('sharkd bytes field:', JSON.stringify(d?.result?.bytes).slice(0, 200))
-        console.log('sharkd bytes type:', typeof d?.result?.bytes)
-        console.log('sharkd bytes length:', d?.result?.bytes?.length)
+        console.log('full sharkd result:', JSON.stringify(d?.result).slice(0, 2000))
         if (!cancelled) { setDecodeData(d); setLoading(false) }
       })
       .catch(() => { if (!cancelled) setLoading(false) })
