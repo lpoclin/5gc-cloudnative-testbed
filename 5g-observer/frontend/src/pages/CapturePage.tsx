@@ -492,7 +492,7 @@ function SharkdNodeItem({
   selectedRange: [number, number] | null
 }) {
   const hasChildren = Array.isArray(node.n) && node.n.length > 0
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation()
