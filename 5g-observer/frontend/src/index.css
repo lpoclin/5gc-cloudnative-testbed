@@ -5,6 +5,8 @@
 @layer base {
   * {
     box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: #30363d #0d1117;
   }
 
   :root {
@@ -25,18 +27,21 @@
 
   /* Scrollbar styling */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
-    background: #0f1629;
+    background: #0d1117;
   }
   ::-webkit-scrollbar-thumb {
-    background: #1e2d4a;
-    border-radius: 3px;
+    background: #30363d;
+    border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #2a3f6a;
+    background: #58a6ff;
+  }
+  ::-webkit-scrollbar-corner {
+    background: #0d1117;
   }
 }
 
