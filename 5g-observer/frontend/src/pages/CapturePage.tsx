@@ -853,10 +853,12 @@ export interface CaptureTab {
 function CaptureTabPanel({
   tab,
   ringBufferSize,
+  splitMode,
   onStatusChange,
 }: {
   tab: CaptureTab
   ringBufferSize: number
+  splitMode: boolean
   onStatusChange: (s: ConnStatus) => void
 }) {
   const [packets,   setPackets]   = useState<LivePacket[]>([])
@@ -1013,6 +1015,18 @@ function CaptureTabPanel({
       <div className="flex items-center gap-2 px-4 py-2 shrink-0"
         style={{ background: '#161b22', borderBottom: '1px solid #30363d' }}>
         <div className="flex items-center gap-1.5">
+          {splitMode && (
+            <span style={{
+              fontFamily: 'Inter, system-ui, sans-serif',
+              fontSize: 12, fontWeight: 'bold', color: '#f0f6fc',
+              background: 'rgba(88,166,255,0.1)', border: '1px solid #30363d',
+              borderRadius: 4, padding: '2px 8px', maxWidth: 120,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              display: 'inline-block',
+            }}>
+              {tab.podDisplay}:{tab.iface}
+            </span>
+          )}
           {paused ? (
             <button onClick={handleResume} className="px-2 py-1 rounded text-xs"
               style={{ background: '#238636', color: '#f0f6fc', border: '1px solid #2ea043' }}>
@@ -1097,7 +1111,7 @@ function CaptureTabPanel({
           <span className="w-12 shrink-0 text-right">Length</span>
           <span className="flex-1">Info</span>
         </div>
-        <div ref={tableRef} className="flex-1 overflow-y-auto font-mono"
+        <div ref={tableRef} className="flex-1 overflow-y-auto overflow-x-auto font-mono"
           style={{ background: '#0d1117' }}>
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualizer.getVirtualItems().map(item => {
@@ -1261,8 +1275,16 @@ export default function CapturePage({
                 borderRight:  '1px solid #30363d',
                 borderBottom: isActive ? '2px solid #58a6ff' : '2px solid transparent',
               }}
-              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#1c2128' }}
-              onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#161b22' }}>
+              onMouseEnter={e => {
+                if (!isActive) (e.currentTarget as HTMLElement).style.background = '#1c2128'
+                const btn = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.tab-close-btn')
+                if (btn) { btn.style.color = '#f0f6fc'; btn.style.opacity = '1' }
+              }}
+              onMouseLeave={e => {
+                if (!isActive) (e.currentTarget as HTMLElement).style.background = '#161b22'
+                const btn = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.tab-close-btn')
+                if (btn) { btn.style.color = '#8b949e'; btn.style.opacity = '0.6' }
+              }}>
               <span className="w-2 h-2 rounded-full shrink-0" style={{ background: dotColor(tab.id) }} />
               <span className="text-xs font-mono whitespace-nowrap"
                 style={{ color: isActive ? '#e6edf3' : '#8b949e' }}>
@@ -1270,8 +1292,25 @@ export default function CapturePage({
               </span>
               <button
                 onClick={e => { e.stopPropagation(); closeTab(tab.id) }}
-                className="ml-1 text-[10px] opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
-                style={{ color: '#6e7681' }}>
+                className="tab-close-btn"
+                style={{
+                  marginLeft: 4, color: '#8b949e', opacity: 0.6,
+                  fontSize: 14, fontWeight: 'bold', padding: '2px 5px',
+                  borderRadius: 3, transition: 'all 0.1s', background: 'transparent',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={e => {
+                  const el = e.currentTarget as HTMLElement
+                  el.style.color = '#ef4444'
+                  el.style.background = 'rgba(239,68,68,0.15)'
+                  el.style.opacity = '1'
+                }}
+                onMouseLeave={e => {
+                  const el = e.currentTarget as HTMLElement
+                  el.style.color = '#f0f6fc'
+                  el.style.background = 'transparent'
+                  el.style.opacity = '1'
+                }}>
                 ×
               </button>
             </div>
@@ -1282,10 +1321,28 @@ export default function CapturePage({
         <button
           onClick={() => { if (tabs.length < 8) setShowAdd(v => !v) }}
           title={tabs.length >= 8 ? 'Maximum 8 tabs reached' : 'Add capture tab'}
-          className="flex items-center px-3 py-2 text-sm font-bold shrink-0"
+          className="flex items-center shrink-0"
           style={{
-            color:  tabs.length >= 8 ? '#4a4a4a' : '#8b949e',
-            cursor: tabs.length >= 8 ? 'not-allowed' : 'pointer',
+            color:        tabs.length >= 8 ? '#4a4a4a' : '#58a6ff',
+            cursor:       tabs.length >= 8 ? 'not-allowed' : 'pointer',
+            fontSize:     16,
+            fontWeight:   'bold',
+            padding:      '2px 8px',
+            borderRadius: 4,
+            transition:   'color 0.1s, background 0.1s',
+            background:   'transparent',
+          }}
+          onMouseEnter={e => {
+            if (tabs.length >= 8) return
+            const el = e.currentTarget as HTMLElement
+            el.style.background = 'rgba(88,166,255,0.15)'
+            el.style.color = '#79c0ff'
+          }}
+          onMouseLeave={e => {
+            if (tabs.length >= 8) return
+            const el = e.currentTarget as HTMLElement
+            el.style.background = 'transparent'
+            el.style.color = '#58a6ff'
           }}>
           +
         </button>
@@ -1372,6 +1429,7 @@ export default function CapturePage({
                 <CaptureTabPanel
                   tab={tab}
                   ringBufferSize={ringBufferSize}
+                  splitMode={splitMode}
                   onStatusChange={s => handleStatusChange(tab.id, s)}
                 />
               </div>,
