@@ -495,6 +495,7 @@ function SharkdNodeItem({
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation()
+    console.log('toggle clicked', node.l, 'hasChildren:', hasChildren)
     if (hasChildren) setExpanded(v => !v)
   }
 
@@ -568,14 +569,12 @@ function HexPanel({
     )
   }
 
-  console.log('hexStr received:', JSON.stringify(hexStr).slice(0, 100))
-  console.log('hexStr type:', typeof hexStr)
-
-  // Parse continuous hex string "bc2411b0f956..." → numeric byte array.
-  const hexClean = (hexStr ?? '').trim().replace(/\s/g, '')
+  // sharkd returns "bytes" as Base64, not hex.
+  // Confirmed: atob("vCQRW0WG") = "\xbc\x24\x11\x5b\x45\x86" ✓
+  const binary = atob(hexStr)
   const bytes: number[] = []
-  for (let i = 0; i + 1 < hexClean.length; i += 2) {
-    bytes.push(parseInt(hexClean.slice(i, i + 2), 16))
+  for (let i = 0; i < binary.length; i++) {
+    bytes.push(binary.charCodeAt(i))
   }
 
   const inHl = (idx: number): boolean =>
