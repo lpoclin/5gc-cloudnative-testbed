@@ -467,118 +467,119 @@ function DecodeTree({ pkt, startNs }: { pkt: LivePacket; startNs: number }) {
 // ─── sharkd protocol tree ─────────────────────────────────────────────────────
 
 interface SharkdTreeNode {
-  l:  string           // label (display string)
+  l:  string           // label — render verbatim, exactly as Wireshark shows it
   t?: string           // type: 'proto' | 'url' | 'framenum' | ...
-  f?: string           // Wireshark filter name (e.g. 'ip.src')
+  f?: string           // Wireshark display filter name, shown as title tooltip
   s?: number           // severity
-  h?: [number, number] // [start_byte, length] byte range
+  h?: [number, number] // [start_byte, byte_length] for hex-panel highlighting
   e?: SharkdTreeNode[] // children
 }
 
 interface DecodeApiResponse {
   sharkd:  boolean
   result?: { tree: SharkdTreeNode[]; bytes: string }
-  bytes?:  string  // raw hex when sharkd=false but bytes available
+  bytes?:  string  // raw hex when sharkd=false but bytes are available
   error?:  string
 }
 
-/** Map filter-name prefix → layer color */
-function nodeLayerColor(f?: string): string {
-  if (!f) return '#8b949e'
-  if (f === 'frame' || f.startsWith('frame.'))              return '#8b949e'
-  if (f === 'eth'   || f.startsWith('eth.'))                return '#58a6ff'
-  if (f === 'ip'    || f.startsWith('ip.')    ||
-      f === 'ipv6'  || f.startsWith('ipv6.'))               return '#3fb950'
-  if (f === 'tcp'   || f.startsWith('tcp.'))                return '#f97316'
-  if (f === 'udp'   || f.startsWith('udp.'))                return '#f97316'
-  if (f === 'sctp'  || f.startsWith('sctp.'))               return '#eab308'
-  if (f === 'gtp'   || f.startsWith('gtp.')   ||
-      f === 'gtp2'  || f.startsWith('gtp2.'))               return '#22c55e'
-  if (f === 'pfcp'  || f.startsWith('pfcp.'))               return '#a855f7'
-  if (f === 'http2' || f.startsWith('http2.') ||
-      f === 'http'  || f.startsWith('http.'))               return '#06b6d4'
-  if (f === 'nas_5gs' || f.startsWith('nas_5gs.') ||
-      f === 'nas_eps' || f.startsWith('nas_eps.'))          return '#f43f5e'
-  if (f === 'ngap'  || f.startsWith('ngap.')  ||
-      f === 's1ap'  || f.startsWith('s1ap.'))               return '#fb923c'
-  if (f === 'dns'   || f.startsWith('dns.'))                return '#34d399'
-  return '#8b949e'
-}
-
+// SharkdNodeItem — renders one tree node and (recursively) its children.
+// ALL text is #f0f6fc (no per-protocol colours), JetBrains Mono 13px,
+// exactly matching the Wireshark packet-details pane aesthetic.
 function SharkdNodeItem({
-  node, depth, onFieldClick,
+  node, depth, onSelect, selectedRange,
 }: {
   node: SharkdTreeNode
   depth: number
-  onFieldClick: (range: [number, number]) => void
+  onSelect: (range: [number, number] | null) => void
+  selectedRange: [number, number] | null
 }) {
   const hasChildren = (node.e?.length ?? 0) > 0
-  const isProtoLayer = node.t === 'proto' || depth === 0
 
-  // Top-level layers: collapse frame/eth/ip by default; expand transport+app
-  const shouldOpenDefault = () => {
-    if (depth !== 0) return true
-    const f = (node.f ?? '').toLowerCase()
-    return !['frame', 'eth', 'ip', 'ipv6', 'arp'].includes(f)
-  }
-  const [open, setOpen] = useState(shouldOpenDefault)
+  // Bit-field breakdown lines like "0... .... = Reserved bit: Not set" start collapsed.
+  // Everything else (including top-level protocol layers) starts expanded.
+  const isBitField = /^[01.]{4}[\s.]/.test(node.l)
+  const [expanded, setExpanded] = useState(!isBitField)
 
-  const color = isProtoLayer ? nodeLayerColor(node.f) : '#e6edf3'
-  const indent = depth * 12
+  const isSelected = selectedRange != null && node.h != null &&
+    node.h[0] === selectedRange[0] && node.h[1] === selectedRange[1]
 
   return (
     <div>
       <div
-        onClick={() => {
-          if (hasChildren) setOpen(v => !v)
-          if (node.h) onFieldClick(node.h)
+        onClick={() => { if (node.h) onSelect(node.h) }}
+        title={node.f}
+        style={{
+          paddingLeft: 4 + depth * 16,
+          background: isSelected ? '#1e3a5f' : undefined,
+          display: 'flex',
+          alignItems: 'flex-start',
+          lineHeight: '20px',
+          cursor: 'default',
         }}
-        title={node.f ?? undefined}
-        className="flex items-start py-px hover:bg-white/5 cursor-pointer select-text text-[11px]"
-        style={{ paddingLeft: 8 + indent }}
+        className="hover:bg-white/5 select-text"
       >
-        <span className="shrink-0 mr-1.5 mt-px text-[9px]" style={{ color: '#58a6ff', minWidth: 8 }}>
-          {hasChildren ? (open ? '▼' : '▶') : ''}
+        {/* ▼ expanded  ▶ collapsed     leaf (two non-breaking spaces) */}
+        <span
+          onClick={e => { e.stopPropagation(); if (hasChildren) setExpanded(v => !v) }}
+          style={{
+            display: 'inline-block',
+            width: 16,
+            flexShrink: 0,
+            color: '#f0f6fc',
+            cursor: hasChildren ? 'pointer' : 'default',
+            fontFamily: '"JetBrains Mono", "Cascadia Code", monospace',
+            fontSize: 13,
+            lineHeight: '20px',
+          }}
+        >
+          {hasChildren ? (expanded ? '▼' : '▶') : '  '}
         </span>
-        <span style={{ color, fontWeight: isProtoLayer ? 'bold' : 'normal', fontFamily: 'JetBrains Mono, monospace' }}>
+        <span style={{
+          color: '#f0f6fc',
+          fontFamily: '"JetBrains Mono", "Cascadia Code", monospace',
+          fontSize: 13,
+          lineHeight: '20px',
+        }}>
           {node.l}
         </span>
       </div>
-      {hasChildren && open && (
-        <SharkdSubTree nodes={node.e!} depth={depth + 1} onFieldClick={onFieldClick} />
-      )}
+
+      {hasChildren && expanded &&
+        node.e!.map((child, i) => (
+          <SharkdNodeItem
+            key={i}
+            node={child}
+            depth={depth + 1}
+            onSelect={onSelect}
+            selectedRange={selectedRange}
+          />
+        ))
+      }
     </div>
   )
 }
 
-function SharkdSubTree({ nodes, depth, onFieldClick }: {
-  nodes: SharkdTreeNode[]; depth: number; onFieldClick: (r: [number, number]) => void
-}) {
-  return (
-    <>
-      {nodes.map((n, i) => (
-        <SharkdNodeItem key={i} node={n} depth={depth} onFieldClick={onFieldClick} />
-      ))}
-    </>
-  )
-}
-
-// ─── Hex dump panel (with optional byte-range highlight) ─────────────────────
+// ─── Hex dump panel (Wireshark format, with byte-range highlight) ─────────────
 
 function HexPanel({
   hexStr, highlight,
 }: {
   hexStr?: string
-  highlight?: [number, number] | null  // [start_byte, length]
+  highlight?: [number, number] | null  // [start_byte, byte_length]
 }) {
   if (!hexStr) {
     return (
-      <div className="flex items-center justify-center h-full text-[11px] font-mono text-center px-4"
-        style={{ color: '#6e7681', background: '#010409' }}>
+      <div
+        className="flex items-center justify-center h-full text-center px-4"
+        style={{
+          color: '#6e7681', background: '#0d1117',
+          fontFamily: '"JetBrains Mono", monospace', fontSize: 12,
+        }}
+      >
         <div className="space-y-1">
           <div style={{ color: '#30363d', fontSize: 20 }}>⬡</div>
           <div>Raw bytes not available from tshark output</div>
-          <div className="text-[10px]" style={{ color: '#30363d' }}>
+          <div style={{ color: '#30363d', fontSize: 10 }}>
             Upgrade api-server image to include tshark for sharkd decode
           </div>
         </div>
@@ -586,57 +587,84 @@ function HexPanel({
     )
   }
 
+  // Parse continuous hex string "bc2411b0f956..." → numeric byte array.
+  // Guard i+1 < length to skip an incomplete trailing nibble if hexStr has odd length.
+  const hexClean = hexStr.trim()
   const bytes: number[] = []
-  for (let i = 0; i < hexStr.length; i += 2) {
-    bytes.push(parseInt(hexStr.slice(i, i + 2), 16))
+  for (let i = 0; i + 1 < hexClean.length; i += 2) {
+    bytes.push(parseInt(hexClean.slice(i, i + 2), 16))
   }
 
-  const hl = highlight  // [startByte, length]
-
-  const rows: { offset: string; chunks: { hex: string; idx: number }[]; ascii: { ch: string; idx: number }[] }[] = []
-  for (let i = 0; i < bytes.length; i += 16) {
-    const chunk = bytes.slice(i, i + 16)
-    rows.push({
-      offset: i.toString(16).padStart(4, '0'),
-      chunks: chunk.map((b, j) => ({ hex: b.toString(16).padStart(2, '0') + (j === 7 ? '  ' : ' '), idx: i + j })),
-      ascii:  chunk.map((b, j) => ({ ch: (b >= 0x20 && b < 0x7f) ? String.fromCharCode(b) : '.', idx: i + j })),
-    })
-  }
-
-  const inHl = (idx: number) =>
-    hl != null && idx >= hl[0] && idx < hl[0] + hl[1]
+  const inHl = (idx: number): boolean =>
+    highlight != null && idx >= highlight[0] && idx < highlight[0] + highlight[1]
 
   return (
-    <div className="overflow-y-auto h-full text-[11px] font-mono" style={{ background: '#010409' }}>
-      {rows.map(r => (
-        <div key={r.offset}
-          className="flex gap-3 px-3 py-px hover:bg-white/5 leading-5 whitespace-nowrap">
-          <span style={{ color: '#6e7681', userSelect: 'none' }}>{r.offset}</span>
-          <span style={{ letterSpacing: '0.03em' }}>
-            {r.chunks.map(c => (
-              <span key={c.idx}
-                style={{ color: inHl(c.idx) ? '#e6edf3' : '#79c0ff',
-                  background: inHl(c.idx) ? 'rgba(88,166,255,0.4)' : undefined }}>
-                {c.hex}
-              </span>
-            ))}
-          </span>
-          <span>
-            {r.ascii.map(a => (
-              <span key={a.idx}
-                style={{ color: inHl(a.idx) ? '#e6edf3' : '#56d364',
-                  background: inHl(a.idx) ? 'rgba(88,166,255,0.4)' : undefined }}>
-                {a.ch}
-              </span>
-            ))}
-          </span>
-        </div>
-      ))}
+    <div
+      className="overflow-y-auto h-full"
+      style={{ background: '#0d1117', fontFamily: '"JetBrains Mono", "Cascadia Code", monospace', fontSize: 12 }}
+    >
+      {Array.from({ length: Math.ceil(bytes.length / 16) }, (_, ri) => {
+        const off   = ri * 16
+        const chunk = bytes.slice(off, off + 16)
+        return (
+          <div
+            key={off}
+            className="flex whitespace-nowrap hover:bg-white/5"
+            style={{ padding: '1px 12px', lineHeight: '20px' }}
+          >
+            {/* Column 1: 4-digit hex offset */}
+            <span style={{ color: '#8b949e', userSelect: 'none', minWidth: 48 }}>
+              {off.toString(16).padStart(4, '0')}
+            </span>
+
+            {/* Column 2: hex bytes, space-separated, extra space after byte 8 */}
+            <span style={{ marginRight: 12 }}>
+              {chunk.map((b, j) => {
+                const idx = off + j
+                const hl  = inHl(idx)
+                return (
+                  <span key={j}>
+                    <span style={{
+                      color: '#f0f6fc',
+                      background: hl ? 'rgba(88,166,255,0.35)' : undefined,
+                    }}>
+                      {b.toString(16).padStart(2, '0')}
+                    </span>
+                    {/* space after each byte except the last; double space after byte 8 */}
+                    {j < chunk.length - 1 && (
+                      <span style={{ userSelect: 'none', whiteSpace: 'pre' }}>
+                        {j === 7 ? '  ' : ' '}
+                      </span>
+                    )}
+                  </span>
+                )
+              })}
+            </span>
+
+            {/* Column 3: ASCII — printable char (0x20-0x7e) or dim dot */}
+            <span>
+              {chunk.map((b, j) => {
+                const idx       = off + j
+                const hl        = inHl(idx)
+                const printable = b >= 0x20 && b <= 0x7e
+                return (
+                  <span key={j} style={{
+                    color:      printable ? '#f0f6fc' : '#6b7280',
+                    background: hl ? 'rgba(88,166,255,0.35)' : undefined,
+                  }}>
+                    {printable ? String.fromCharCode(b) : '.'}
+                  </span>
+                )
+              })}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-// ─── Decode panel container (resizable height + split tree/hex + sharkd fetch) ──
+// ─── Decode panel (resizable height, left tree / right hex, sharkd fetch) ────
 
 function DecodePanel({
   pkt, startNs, onClose,
@@ -648,8 +676,8 @@ function DecodePanel({
   const [decodeData, setDecodeData] = useState<DecodeApiResponse | null>(null)
   const [loading,   setLoading]   = useState(false)
   const [highlight, setHighlight] = useState<[number, number] | null>(null)
-  const hRef       = useRef<{ y0: number; h0: number } | null>(null)
-  const sRef       = useRef<{ x0: number; pct0: number; w: number } | null>(null)
+  const hRef        = useRef<{ y0: number; h0: number } | null>(null)
+  const sRef        = useRef<{ x0: number; pct0: number; w: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Fetch sharkd decode whenever the selected packet (by ts) changes
@@ -669,11 +697,11 @@ function DecodePanel({
     return () => { cancelled = true }
   }, [pkt.ts, pkt.pod, pkt.iface])
 
-  // Panel height resize
+  // Panel height resize — drag the top border handle
   useEffect(() => {
     const mv = (e: MouseEvent) => {
       if (!hRef.current) return
-      const next = Math.max(150, Math.min(Math.floor(window.innerHeight * 0.6),
+      const next = Math.max(150, Math.min(Math.floor(window.innerHeight * 0.7),
         hRef.current.h0 + (hRef.current.y0 - e.clientY)))
       setPanelH(next)
     }
@@ -683,7 +711,7 @@ function DecodePanel({
     return () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up) }
   }, [])
 
-  // Vertical split resize
+  // Vertical split resize — drag the 4px divider between tree and hex
   useEffect(() => {
     const mv = (e: MouseEvent) => {
       if (!sRef.current) return
@@ -696,18 +724,23 @@ function DecodePanel({
     return () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up) }
   }, [])
 
-  // Determine tree + hex content
-  const useSharkd  = decodeData?.sharkd && decodeData.result != null
-  const hexStr     = useSharkd ? decodeData!.result!.bytes : (decodeData?.bytes ?? pkt.rawHex)
+  const useSharkd = decodeData?.sharkd === true && decodeData.result != null
+  const hexStr    = useSharkd
+    ? decodeData!.result!.bytes
+    : (decodeData?.bytes ?? pkt.rawHex)
+
   const sharkdBadge = useSharkd
-    ? <span className="text-[9px] px-1 rounded" style={{ background: '#1a3f1a', color: '#3fb950', border: '1px solid #2ea043' }}>sharkd</span>
+    ? <span style={{ background: '#1a3f1a', color: '#3fb950', border: '1px solid #2ea043',
+        fontSize: 9, padding: '1px 4px', borderRadius: 3 }}>sharkd</span>
     : decodeData && !decodeData.sharkd
-      ? <span className="text-[9px] px-1 rounded" style={{ background: '#2a1a0a', color: '#d29922', border: '1px solid #9a6700' }}>basic decode</span>
+      ? <span style={{ background: '#2a1a0a', color: '#d29922', border: '1px solid #9a6700',
+          fontSize: 9, padding: '1px 4px', borderRadius: 3 }}>basic decode</span>
       : null
 
   return (
     <div className="shrink-0 flex flex-col" style={{ height: panelH + 28, background: '#0d1117' }}>
-      {/* Drag handle / header */}
+
+      {/* ── Header / drag handle ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 shrink-0 cursor-ns-resize select-none"
         style={{ height: 28, background: '#161b22', borderTop: '2px solid #30363d' }}
@@ -735,33 +768,36 @@ function DecodePanel({
         </button>
       </div>
 
-      {/* Tree | divider | hex */}
+      {/* ── Left: protocol tree  |  divider  |  Right: hex dump ─────────── */}
       <div ref={containerRef} className="flex flex-1 min-h-0 overflow-hidden">
 
-        {/* Protocol tree — sharkd or fallback */}
-        <div style={{ width: `${splitPct}%`, minWidth: 0, overflow: 'hidden' }}>
+        {/* Protocol tree — sharkd real tree or info-string fallback */}
+        <div style={{ width: `${splitPct}%`, minWidth: 0, overflow: 'hidden', background: '#1a1d2e' }}>
           {loading ? (
             <div className="flex items-center justify-center h-full text-[11px] animate-pulse"
-              style={{ color: '#8b949e', background: '#0d1117' }}>
+              style={{ color: '#8b949e' }}>
               Waiting for sharkd…
             </div>
           ) : useSharkd ? (
-            <div className="overflow-y-auto h-full" style={{ background: '#0d1117' }}>
-              <SharkdSubTree
-                nodes={decodeData!.result!.tree}
-                depth={0}
-                onFieldClick={r => setHighlight(r)}
-              />
+            <div className="overflow-y-auto h-full">
+              {decodeData!.result!.tree.map((n, i) => (
+                <SharkdNodeItem
+                  key={i}
+                  node={n}
+                  depth={0}
+                  onSelect={r => setHighlight(r)}
+                  selectedRange={highlight}
+                />
+              ))}
             </div>
           ) : (
-            /* Fallback: info-string based tree */
             <DecodeTree pkt={pkt} startNs={startNs} />
           )}
         </div>
 
         {/* Draggable vertical divider */}
         <div
-          className="shrink-0 cursor-ew-resize transition-colors"
+          className="shrink-0 cursor-ew-resize"
           style={{ width: 4, background: '#30363d' }}
           onMouseDown={e => {
             e.preventDefault()
