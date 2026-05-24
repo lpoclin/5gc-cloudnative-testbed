@@ -47,7 +47,15 @@ function StatusBadge({ node }: { node: TopologyNode }) {
 const FREE5GC_LOG_RE = /^(\S+Z)\s+\[(\w+)\]\[(\w+)\]\[(\w+)\]\s+(.*)$/
 
 const LOG_LEVEL_COLORS: Record<string, string> = {
-  INFO: '#98c379', DEBU: '#61afef', TRAC: '#5c6370', WARN: '#e5c07b', ERRO: '#e06c75',
+  INFO: '#56b6c2', DEBU: '#abb2bf', TRAC: '#5c6370', WARN: '#e5c07b', ERRO: '#e06c75', FATAL: '#c678dd',
+}
+
+// Strip Loki metadata timestamp prefix, then strip ANSI escape codes
+function cleanRaw(raw: string): string {
+  return raw
+    .replace(/^\S+Z\s+/, '')
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .replace(/\x1b/g, '')
 }
 
 function renderMessage(msg: string) {
@@ -67,8 +75,9 @@ function renderMessage(msg: string) {
 }
 
 function renderLogLine(raw: string) {
-  const m = FREE5GC_LOG_RE.exec(raw)
-  if (!m) return <span style={{ color: '#ffffff' }}>{raw}</span>
+  const clean = cleanRaw(raw)
+  const m = FREE5GC_LOG_RE.exec(clean)
+  if (!m) return <span style={{ color: '#abb2bf' }}>{clean}</span>
   const [, ts, level, component, subsystem, message] = m
   const lc = LOG_LEVEL_COLORS[level] ?? '#abb2bf'
   return (
@@ -76,7 +85,7 @@ function renderLogLine(raw: string) {
       <span style={{ color: '#56b6c2' }}>{ts.slice(11, 23)}</span>
       {' '}
       <span style={{ color: lc }}>[{level}]</span>
-      <span style={{ color: '#c678dd' }}>[{component}]</span>
+      <span style={{ color: '#abb2bf' }}>[{component}]</span>
       <span style={{ color: '#abb2bf' }}>[{subsystem}]</span>
       {' '}
       {renderMessage(message)}
@@ -165,7 +174,7 @@ function NfLogColumn({
       {/* Log lines */}
       <div
         ref={parentRef}
-        className="flex-1 overflow-y-auto"
+        className="flex-1 overflow-y-auto overflow-x-auto"
         style={{ background: '#0d1117', fontFamily: '"JetBrains Mono", "Cascadia Code", monospace', fontSize: 12 }}
         onMouseEnter={() => logs.setAutoScroll(false)}
         onMouseLeave={() => logs.setAutoScroll(true)}
