@@ -56,27 +56,36 @@ export default function TopologyPage() {
   }, [sideWidth])
 
   // ── Terminal panel drag ────────────────────────────────────────────────────
-  const termDragStart = useRef<{ y: number; h: number } | null>(null)
+  // termCurrentHeightRef tracks the live drag height without triggering re-renders.
+  // setTermHeight is called exactly once on mouseup to sync React state.
+  const termCurrentHeightRef = useRef(getSaved('5g-observer-terminal-height', TERM_DEFAULT))
+  const terminalBodyRef      = useRef<HTMLDivElement>(null)
+  const termDragStart        = useRef<{ y: number; h: number } | null>(null)
+
   const onTermMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
-    termDragStart.current = { y: e.clientY, h: termHeight }
-  }, [termHeight])
+    termDragStart.current = { y: e.clientY, h: termCurrentHeightRef.current }
+  }, [])
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!termDragStart.current) return
       const delta = termDragStart.current.y - e.clientY   // drag up → taller
       const next  = Math.min(TERM_MAX, Math.max(TERM_MIN, termDragStart.current.h + delta))
-      setTermHeight(next)
+      termCurrentHeightRef.current = next
+      if (terminalBodyRef.current) terminalBodyRef.current.style.height = next + 'px'
     }
     const onUp = () => {
       if (!termDragStart.current) return
-      try { localStorage.setItem('5g-observer-terminal-height', String(termHeight)) } catch { /* ok */ }
+      const h = termCurrentHeightRef.current
+      try { localStorage.setItem('5g-observer-terminal-height', String(h)) } catch { /* ok */ }
       termDragStart.current = null
+      setTermHeight(h)
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [termHeight])
+  }, [])
 
   const { data: graph, isLoading, isError, refetch } = useTopology(namespace)
 
@@ -232,6 +241,7 @@ export default function TopologyPage() {
           open={termOpen}
           onToggle={() => setTermOpen(v => !v)}
           height={termHeight}
+          bodyRef={terminalBodyRef}
         />
       </div>
     </div>

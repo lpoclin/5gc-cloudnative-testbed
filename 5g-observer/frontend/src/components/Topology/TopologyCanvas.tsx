@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
+import { useEffect, useRef, useCallback, useMemo, useState, memo } from 'react'
 import cytoscape, { Core, ElementDefinition, EventObject, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useNavigate } from 'react-router-dom'
 import type { TopologyGraph, TopologyNode, TopologyEdge } from '@/types/topology'
@@ -663,7 +663,7 @@ function DotTipBox({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function TopologyCanvas({
+function TopologyCanvas({
   graph,
   onNodeClick,
   onEdgeClick,
@@ -1037,3 +1037,5 @@ export default function TopologyCanvas({
     </div>
   )
 }
+
+export default memo(TopologyCanvas)
