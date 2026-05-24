@@ -5,8 +5,8 @@ import CapturePage, { type CaptureTab } from '@/pages/CapturePage'
 
 const NAV_LINKS = [
   { to: '/',               label: 'Topology'       },
-  { to: '/infrastructure', label: 'Infrastructure' },
   { to: '/captures',       label: 'Captures'       },
+  { to: '/infrastructure', label: 'Infrastructure' },
 ]
 
 export default function Layout() {

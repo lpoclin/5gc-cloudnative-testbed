@@ -96,25 +96,26 @@ function PodUtilizationPanel() {
               {pods.map(p => {
                 const cpuPct = p.cpuLimitM > 0 ? Math.round((p.cpuUsedM / p.cpuLimitM) * 100) : null
                 const ramPct = p.ramLimitMi > 0 ? Math.round((p.ramUsedMi / p.ramLimitMi) * 100) : null
-                const podLabel = p.pod.length > 30 ? p.pod.slice(0, 28) + '…' : p.pod
                 return (
                   <div
                     key={p.pod}
                     className="grid font-mono text-xs py-0.5"
                     style={{ gridTemplateColumns: '200px 160px 1fr', color: '#c9d1d9' }}
                   >
-                    <span className="truncate pr-2" title={p.pod}>{podLabel}</span>
+                    <span className="break-all pr-2">{p.pod}</span>
                     <span>
                       {Math.round(p.cpuUsedM)}m
-                      {cpuPct !== null && (
-                        <span> (<span style={{ color: pctColor(cpuPct) }}>{cpuPct}%</span> lim)</span>
-                      )}
+                      {cpuPct !== null
+                        ? <span> (<span style={{ color: pctColor(cpuPct) }}>{cpuPct}%</span> lim)</span>
+                        : <span style={{ color: '#8b949e' }}> (no limit)</span>
+                      }
                     </span>
                     <span>
                       {Math.round(p.ramUsedMi)}Mi
-                      {ramPct !== null && (
-                        <span> (<span style={{ color: pctColor(ramPct) }}>{ramPct}%</span> lim)</span>
-                      )}
+                      {ramPct !== null
+                        ? <span> (<span style={{ color: pctColor(ramPct) }}>{ramPct}%</span> lim)</span>
+                        : <span style={{ color: '#8b949e' }}> (no limit)</span>
+                      }
                     </span>
                   </div>
                 )
