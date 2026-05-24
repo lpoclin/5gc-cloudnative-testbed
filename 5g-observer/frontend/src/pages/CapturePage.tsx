@@ -1102,11 +1102,16 @@ function CaptureTabPanel({
           style={{ background: '#161b22', border: '1px solid #30363d', color: '#e6edf3' }} />
       </div>
 
-      {/* MAIN AREA */}
+      {/* MAIN AREA — single scroll container; header sticky-top so it stays visible on vertical scroll */}
       <div className="flex flex-col flex-1 min-h-0">
-        <div className="flex flex-col flex-1 min-h-0 overflow-x-auto">
-          <div className="flex items-center gap-2 px-3 py-1 font-mono text-[10px] uppercase shrink-0"
-            style={{ background: '#161b22', color: '#6e7681', borderBottom: '1px solid #21262d', minWidth: 820 }}>
+        <div ref={tableRef} className="flex-1 overflow-y-auto overflow-x-auto font-mono"
+          style={{ background: '#0d1117' }}>
+          {/* Column header — sticky vertically, scrolls with content horizontally */}
+          <div className="flex items-center gap-2 px-3 py-1 font-mono text-[10px] uppercase"
+            style={{
+              background: '#161b22', color: '#6e7681', borderBottom: '1px solid #21262d',
+              minWidth: 820, position: 'sticky', top: 0, zIndex: 10,
+            }}>
             <span className="w-10 shrink-0 text-right">No.</span>
             <span className="w-32 shrink-0">Time (UTC)</span>
             <span className="w-36 shrink-0">Source</span>
@@ -1115,32 +1120,31 @@ function CaptureTabPanel({
             <span className="w-12 shrink-0 text-right">Length</span>
             <span className="flex-1">Info</span>
           </div>
-          <div ref={tableRef} className="flex-1 overflow-y-auto font-mono"
-            style={{ background: '#0d1117' }}>
-            <div style={{ height: virtualizer.getTotalSize(), position: 'relative', minWidth: 820 }}>
-              {virtualizer.getVirtualItems().map(item => {
-                const pkt        = displayed[item.index]!
-                const isSelected = pkt.no === selectedNo
-                return (
-                  <div key={item.key}
-                    onClick={() => setSelectedNo(prev => prev === pkt.no ? null : pkt.no)}
-                    style={{
-                      position: 'absolute', top: item.start, width: '100%', height: item.size,
-                      background: rowBg(pkt.protocol, isSelected),
-                      borderLeft: isSelected ? '3px solid #58a6ff' : '3px solid transparent',
-                    }}
-                    className="flex items-center gap-2 px-3 cursor-pointer hover:brightness-125">
-                    <span className="w-10 shrink-0 text-right select-text" style={{ color: '#6e7681' }}>{pkt.no}</span>
-                    <span className="w-32 shrink-0 tabular-nums select-text" style={{ color: '#8b949e' }}>{fmtAbsTime(pkt.ts)}</span>
-                    <span className="w-36 shrink-0 truncate select-text">{pkt.srcIP}</span>
-                    <span className="w-36 shrink-0 truncate select-text">{pkt.dstIP}</span>
-                    <span className="w-20 shrink-0 font-bold select-text" style={{ color: protoColor(pkt.protocol) }}>{pkt.protocol}</span>
-                    <span className="w-12 shrink-0 text-right select-text" style={{ color: '#6e7681' }}>{pkt.length}</span>
-                    <span className="flex-1 truncate select-text" style={{ color: '#c9d1d9' }}>{pkt.info}</span>
-                  </div>
-                )
-              })}
-            </div>
+          {/* Virtual rows — minWidth:'100%' lets rows grow wider than the container when
+              Info text is long; overflow is visible so the scroll container tracks it */}
+          <div style={{ height: virtualizer.getTotalSize(), position: 'relative', minWidth: 820 }}>
+            {virtualizer.getVirtualItems().map(item => {
+              const pkt        = displayed[item.index]!
+              const isSelected = pkt.no === selectedNo
+              return (
+                <div key={item.key}
+                  onClick={() => setSelectedNo(prev => prev === pkt.no ? null : pkt.no)}
+                  style={{
+                    position: 'absolute', top: item.start, minWidth: '100%', height: item.size,
+                    background: rowBg(pkt.protocol, isSelected),
+                    borderLeft: isSelected ? '3px solid #58a6ff' : '3px solid transparent',
+                  }}
+                  className="flex items-center gap-2 px-3 cursor-pointer hover:brightness-125">
+                  <span className="w-10 shrink-0 text-right select-text" style={{ color: '#6e7681' }}>{pkt.no}</span>
+                  <span className="w-32 shrink-0 tabular-nums select-text" style={{ color: '#8b949e' }}>{fmtAbsTime(pkt.ts)}</span>
+                  <span className="w-36 shrink-0 truncate select-text">{pkt.srcIP}</span>
+                  <span className="w-36 shrink-0 truncate select-text">{pkt.dstIP}</span>
+                  <span className="w-20 shrink-0 font-bold select-text" style={{ color: protoColor(pkt.protocol) }}>{pkt.protocol}</span>
+                  <span className="w-12 shrink-0 text-right select-text" style={{ color: '#6e7681' }}>{pkt.length}</span>
+                  <span className="shrink-0 select-text" style={{ color: '#c9d1d9', whiteSpace: 'nowrap' }}>{pkt.info}</span>
+                </div>
+              )
+            })}
           </div>
         </div>
         {selectedPkt && (
