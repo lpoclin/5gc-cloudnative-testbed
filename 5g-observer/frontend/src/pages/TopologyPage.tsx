@@ -18,8 +18,19 @@ const TERM_MIN = 150
 const TERM_MAX = 500
 const TERM_DEFAULT = 200
 
+// Clear any previously-cached zero/invalid values so stale bad data doesn't persist.
+;['5g-observer-sidepanel-width', '5g-observer-terminal-height'].forEach(k => {
+  const raw = localStorage.getItem(k)
+  if (raw !== null && (Number(raw) <= 0 || isNaN(Number(raw)))) localStorage.removeItem(k)
+})
+
 function getSaved(key: string, def: number): number {
-  try { const v = Number(localStorage.getItem(key)); return isNaN(v) ? def : Math.max(def - def, v) } catch { return def }
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw === null) return def
+    const v = Number(raw)
+    return (isNaN(v) || v <= 0) ? def : v
+  } catch { return def }
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
