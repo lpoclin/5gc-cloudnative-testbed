@@ -87,7 +87,7 @@ function PodUtilizationPanel() {
               </div>
               <div
                 className="grid font-mono mb-1"
-                style={{ gridTemplateColumns: '200px 160px 1fr', color: '#6e7681', fontSize: 10 }}
+                style={{ gridTemplateColumns: 'minmax(320px, 1fr) 140px 140px', color: '#6e7681', fontSize: 10 }}
               >
                 <span>Pod</span>
                 <span>CPU (used / % lim)</span>
@@ -100,9 +100,9 @@ function PodUtilizationPanel() {
                   <div
                     key={p.pod}
                     className="grid font-mono text-xs py-0.5"
-                    style={{ gridTemplateColumns: '200px 160px 1fr', color: '#c9d1d9' }}
+                    style={{ gridTemplateColumns: 'minmax(320px, 1fr) 140px 140px', color: '#c9d1d9' }}
                   >
-                    <span className="break-all pr-2">{p.pod}</span>
+                    <span className="pr-2" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.pod}</span>
                     <span>
                       {Math.round(p.cpuUsedM)}m
                       {cpuPct !== null
