@@ -99,6 +99,17 @@ func (h *MetricsHandler) GetInterfaceMetrics(c *gin.Context) {
 	})
 }
 
+// GET /api/metrics/pods
+func (h *MetricsHandler) GetPodsUtilization(c *gin.Context) {
+	pods, err := h.prom.PodUtilization(c.Request.Context())
+	if err != nil {
+		log.Warn().Err(err).Msg("pod utilization")
+		c.JSON(http.StatusOK, []interface{}{})
+		return
+	}
+	c.JSON(http.StatusOK, pods)
+}
+
 func r1(v float64) float64 { return math.Round(v*10) / 10 }
 func r2(v float64) float64 { return math.Round(v*100) / 100 }
 

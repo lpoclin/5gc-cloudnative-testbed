@@ -1,7 +1,7 @@
 import type { TopologyGraph, TopologyNode, NetworkInterface } from '@/types/topology'
 import type {
   K8sNode, K8sEvent, K8sPVC, ClusterMetrics,
-  NamespaceStats, ClusterTimeSeries, ClusterInfo,
+  NamespaceStats, ClusterTimeSeries, ClusterInfo, PodMetricEntry,
 } from '@/types/k8s'
 
 const BASE = import.meta.env.VITE_API_URL ?? ''
@@ -46,6 +46,7 @@ export const api = {
       request<{ cpuPercent: number; memoryMi: number }>(
         `/api/metrics/pod/${encodeURIComponent(namespace)}/${encodeURIComponent(pod)}`,
       ),
+    podsUtilization: () => request<PodMetricEntry[]>('/api/metrics/pods'),
   },
   nodes: {
     list: () => request<K8sNode[]>('/api/nodes'),

@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -213,6 +214,69 @@ func (c *Client) NodePodCounts(ctx context.Context) (map[string]int, error) {
 		}
 		result[node] = int(parseValue(r.Value))
 	}
+	return result, nil
+}
+
+// ─── Pod utilization ─────────────────────────────────────────────────────────
+
+type PodMetricEntry struct {
+	Namespace  string  `json:"namespace"`
+	Pod        string  `json:"pod"`
+	CPUUsedM   float64 `json:"cpuUsedM"`
+	CPULimitM  float64 `json:"cpuLimitM"`
+	RAMUsedMi  float64 `json:"ramUsedMi"`
+	RAMLimitMi float64 `json:"ramLimitMi"`
+}
+
+func (c *Client) PodUtilization(ctx context.Context) ([]PodMetricEntry, error) {
+	cpuUsedQ := `sum by(namespace, pod) (rate(container_cpu_usage_seconds_total{namespace!="",container!="",container!="POD"}[1m])) * 1000`
+	cpuLimQ  := `sum by(namespace, pod) (kube_pod_container_resource_limits{resource="cpu",container!=""}) * 1000`
+	ramUsedQ := `sum by(namespace, pod) (container_memory_working_set_bytes{namespace!="",container!="",container!="POD"}) / 1048576`
+	ramLimQ  := `sum by(namespace, pod) (kube_pod_container_resource_limits{resource="memory",container!=""}) / 1048576`
+
+	type podKey struct{ ns, pod string }
+	pods := make(map[podKey]*PodMetricEntry)
+
+	ensure := func(ns, pod string) *PodMetricEntry {
+		k := podKey{ns, pod}
+		if e, ok := pods[k]; ok {
+			return e
+		}
+		e := &PodMetricEntry{Namespace: ns, Pod: pod}
+		pods[k] = e
+		return e
+	}
+
+	fill := func(q string, setter func(*PodMetricEntry, float64)) {
+		resp, err := c.queryRaw(ctx, q)
+		if err != nil {
+			return
+		}
+		for _, r := range resp.Data.Result {
+			ns  := r.Metric["namespace"]
+			pod := r.Metric["pod"]
+			if ns == "" || pod == "" {
+				continue
+			}
+			setter(ensure(ns, pod), parseValue(r.Value))
+		}
+	}
+
+	fill(cpuUsedQ, func(e *PodMetricEntry, v float64) { e.CPUUsedM  = round1(v) })
+	fill(cpuLimQ,  func(e *PodMetricEntry, v float64) { e.CPULimitM = round1(v) })
+	fill(ramUsedQ, func(e *PodMetricEntry, v float64) { e.RAMUsedMi  = round1(v) })
+	fill(ramLimQ,  func(e *PodMetricEntry, v float64) { e.RAMLimitMi = round1(v) })
+
+	result := make([]PodMetricEntry, 0, len(pods))
+	for _, e := range pods {
+		result = append(result, *e)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Namespace != result[j].Namespace {
+			return result[i].Namespace < result[j].Namespace
+		}
+		return result[i].Pod < result[j].Pod
+	})
 	return result, nil
 }
 

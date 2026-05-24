@@ -92,3 +92,12 @@ export interface ClusterTimeSeries {
   cpuPercent: TimeSeriesPoint[]
   memoryPercent: TimeSeriesPoint[]
 }
+
+export interface PodMetricEntry {
+  namespace: string
+  pod: string
+  cpuUsedM: number
+  cpuLimitM: number
+  ramUsedMi: number
+  ramLimitMi: number
+}
