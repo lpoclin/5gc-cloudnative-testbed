@@ -11,9 +11,9 @@ import type { TopologyNode, TopologyEdge } from '@/types/topology'
 // multi-namespace support planned for v0.2
 const namespace = 'free5gc'
 
-const SIDE_MIN = 250
-const SIDE_MAX = 600
-const SIDE_DEFAULT = 350
+const SIDE_MIN = 400
+const SIDE_MAX = 1600
+const SIDE_DEFAULT = 800
 const TERM_MIN = 150
 const TERM_MAX = 500
 const TERM_DEFAULT = 200
@@ -37,7 +37,7 @@ function getSaved(key: string, def: number): number {
 
 export default function TopologyPage() {
   const [selectedNode, setSelectedNode] = useState<TopologyNode | null>(null)
-  const [sidePanelOpen, setSidePanelOpen] = useState(true)
+  const [sidePanelOpen, setSidePanelOpen] = useState(false)
   const [termOpen, setTermOpen]       = useState(true)
   const [sideWidth,   setSideWidth]   = useState(() => getSaved('5g-observer-sidepanel-width', SIDE_DEFAULT))
   const [termHeight,  setTermHeight]  = useState(() => getSaved('5g-observer-terminal-height', TERM_DEFAULT))
@@ -103,6 +103,7 @@ export default function TopologyPage() {
   const handleNodeClick = useCallback((node: TopologyNode) => {
     setSelectedNode(node)
     setSidePanelOpen(true)
+    setSideWidth(800)
   }, [])
 
   const handleEdgeClick = useCallback((edge: TopologyEdge, sourceNode: TopologyNode) => {

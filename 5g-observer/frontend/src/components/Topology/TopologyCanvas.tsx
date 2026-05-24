@@ -804,7 +804,8 @@ function TopologyCanvas({
     })
 
     cyRef.current = cy
-    cy.fit(cy.nodes(), 60)
+    cy.fit(cy.nodes(), 80)
+    if (cy.zoom() > 0.8) cy.zoom(0.8)
 
     const onMove = (e: MouseEvent) => {
       const r = containerRef.current?.getBoundingClientRect()

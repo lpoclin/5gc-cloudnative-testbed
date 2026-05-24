@@ -42,6 +42,48 @@ function StatusBadge({ node }: { node: TopologyNode }) {
   )
 }
 
+// ─── Log line rendering ───────────────────────────────────────────────────────
+
+const FREE5GC_LOG_RE = /^(\S+Z)\s+\[(\w+)\]\[(\w+)\]\[(\w+)\]\s+(.*)$/
+
+const LOG_LEVEL_COLORS: Record<string, string> = {
+  INFO: '#98c379', DEBU: '#61afef', TRAC: '#5c6370', WARN: '#e5c07b', ERRO: '#e06c75',
+}
+
+function renderMessage(msg: string) {
+  const parts = [] as Array<string | React.JSX.Element>
+  const re = /(\w+)(=)(\S*)/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(msg)) !== null) {
+    if (m.index > last) parts.push(msg.slice(last, m.index))
+    parts.push(<span key={`k${m.index}`} style={{ color: '#61afef' }}>{m[1]}</span>)
+    parts.push(<span key={`eq${m.index}`} style={{ color: '#abb2bf' }}>=</span>)
+    parts.push(<span key={`v${m.index}`} style={{ color: '#98c379' }}>{m[3]}</span>)
+    last = m.index + m[0].length
+  }
+  if (last < msg.length) parts.push(msg.slice(last))
+  return <>{parts}</>
+}
+
+function renderLogLine(raw: string) {
+  const m = FREE5GC_LOG_RE.exec(raw)
+  if (!m) return <span style={{ color: '#ffffff' }}>{raw}</span>
+  const [, ts, level, component, subsystem, message] = m
+  const lc = LOG_LEVEL_COLORS[level] ?? '#abb2bf'
+  return (
+    <>
+      <span style={{ color: '#56b6c2' }}>{ts.slice(11, 23)}</span>
+      {' '}
+      <span style={{ color: lc }}>[{level}]</span>
+      <span style={{ color: '#c678dd' }}>[{component}]</span>
+      <span style={{ color: '#abb2bf' }}>[{subsystem}]</span>
+      {' '}
+      {renderMessage(message)}
+    </>
+  )
+}
+
 // ─── Single NF log column ─────────────────────────────────────────────────────
 function NfLogColumn({
   node,
@@ -70,7 +112,7 @@ function NfLogColumn({
   const virtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 18,
+    estimateSize: () => 20,
     overscan: 20,
   })
 
@@ -80,14 +122,6 @@ function NfLogColumn({
       virtualizer.scrollToIndex(filtered.length - 1, { align: 'end' })
     }
   }, [filtered.length, logs.autoScroll, virtualizer])
-
-  const levelColors: Record<string, string> = {
-    error: 'text-red-400',
-    warn:  'text-yellow-400',
-    debug: 'text-slate-500',
-    info:  'text-slate-300',
-    unknown: 'text-slate-400',
-  }
 
   return (
     <div className="flex flex-col flex-1 min-w-0 border-r border-border last:border-0">
@@ -131,7 +165,8 @@ function NfLogColumn({
       {/* Log lines */}
       <div
         ref={parentRef}
-        className="flex-1 overflow-y-auto font-mono text-xs"
+        className="flex-1 overflow-y-auto"
+        style={{ background: '#0d1117', fontFamily: '"JetBrains Mono", "Cascadia Code", monospace', fontSize: 12 }}
         onMouseEnter={() => logs.setAutoScroll(false)}
         onMouseLeave={() => logs.setAutoScroll(true)}
       >
@@ -146,17 +181,13 @@ function NfLogColumn({
                   top: item.start,
                   width: '100%',
                   height: item.size,
+                  lineHeight: 1.4,
+                  padding: '2px 4px',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
                 }}
-                className="flex items-start gap-1 px-1.5 hover:bg-bg-hover/50"
               >
-                {logs.showTimestamps && (
-                  <span className="text-slate-600 shrink-0 text-[10px] pt-px">
-                    {line.timestamp.slice(11, 23)}
-                  </span>
-                )}
-                <span className={clsx('flex-1 break-all leading-[18px]', levelColors[line.level] ?? 'text-slate-400')}>
-                  {line.message.length > 300 ? line.message.slice(0, 300) + '…' : line.message}
-                </span>
+                {renderLogLine(line.raw)}
               </div>
             )
           })}
