@@ -111,7 +111,7 @@ export default function TimeSeriesChart() {
   return (
     <div className="card p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <span className="label">Cluster utilisation</span>
+        <span className="label">Cluster utilization</span>
         <div className="flex items-center gap-1">
           {(['1h', '6h', '24h'] as Range[]).map(r => (
             <button

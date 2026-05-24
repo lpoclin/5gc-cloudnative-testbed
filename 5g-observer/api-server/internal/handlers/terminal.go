@@ -19,6 +19,7 @@ import (
 type termMsg struct {
 	Type     string `json:"type"`
 	Data     string `json:"data,omitempty"`
+	Host     string `json:"host,omitempty"`
 	User     string `json:"user,omitempty"`
 	Password string `json:"password,omitempty"`
 	Cols     uint32 `json:"cols,omitempty"`
@@ -79,9 +80,14 @@ func TerminalHandler(c *gin.Context) {
 
 	user := authMsg.User
 	password := authMsg.Password
+	targetHost := sshHost
+	if authMsg.Host != "" {
+		targetHost = authMsg.Host
+	}
 	// Clear from authMsg immediately after extracting
 	authMsg.User = ""
 	authMsg.Password = ""
+	authMsg.Host = ""
 
 	// ── Step 2: SSH dial ───────────────────────────────────────────────────
 	sshCfg := &ssh.ClientConfig{
@@ -93,7 +99,7 @@ func TerminalHandler(c *gin.Context) {
 	// Wipe password from local variable after building config
 	password = ""
 
-	addr := fmt.Sprintf("%s:%s", sshHost, sshPort)
+	addr := fmt.Sprintf("%s:%s", targetHost, sshPort)
 	sshConn, err := ssh.Dial("tcp", addr, sshCfg)
 	if err != nil {
 		log.Warn().Err(err).Str("user", user).Msg("ssh auth failed")

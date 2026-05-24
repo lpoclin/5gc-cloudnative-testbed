@@ -50,6 +50,7 @@ function TerminalInstance({ tabId, active, panelOpen, onConnected, onDisconnecte
   const mountedRef = useRef(false)
 
   const [connState, setConnState] = useState<ConnState>('login')
+  const [host, setHost] = useState(SSH_HOST)
   const [username, setUsername] = useState(DEFAULT_USER)
   const [password, setPassword] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
@@ -128,7 +129,7 @@ function TerminalInstance({ tabId, active, panelOpen, onConnected, onDisconnecte
     })
     ro.observe(containerRef.current)
     return () => ro.disconnect()
-  }, [active]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, connState]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cleanup WS on unmount ─────────────────────────────────────────────────
   useEffect(() => () => { wsRef.current?.close() }, [])
@@ -154,7 +155,7 @@ function TerminalInstance({ tabId, active, panelOpen, onConnected, onDisconnecte
     setPassword('')  // wipe from React state immediately
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'auth', user, password: pass }))
+      ws.send(JSON.stringify({ type: 'auth', host, user, password: pass }))
     }
 
     ws.onmessage = (ev) => {
@@ -186,7 +187,7 @@ function TerminalInstance({ tabId, active, panelOpen, onConnected, onDisconnecte
         onDisconnected(tabId)
       }
     }
-  }, [username, password, tabId, onConnected, onDisconnected, connState])
+  }, [host, username, password, tabId, onConnected, onDisconnected, connState])
 
   // ── Login / error form ─────────────────────────────────────────────────────
   if (connState !== 'connected' && connState !== 'connecting') {
@@ -194,7 +195,7 @@ function TerminalInstance({ tabId, active, panelOpen, onConnected, onDisconnecte
       <div className="flex items-center justify-center h-full" style={{ background: '#0d1117' }}>
         <div className="w-64 space-y-3">
           <p className="text-center text-[11px] font-mono" style={{ color: '#8b949e' }}>
-            SSH — {SSH_HOST}
+            SSH — {host}
           </p>
 
           {errorMsg && (
@@ -205,16 +206,24 @@ function TerminalInstance({ tabId, active, panelOpen, onConnected, onDisconnecte
           )}
 
           <div className="space-y-2">
-            {/* Host — read-only */}
+            {/* Host */}
             <div>
               <label className="block text-[10px] uppercase tracking-wide mb-0.5" style={{ color: '#6e7681' }}>
                 Host
               </label>
               <input
-                readOnly
-                value={SSH_HOST}
-                className="w-full px-2 py-1 rounded text-xs font-mono cursor-not-allowed"
-                style={{ background: '#010409', border: '1px solid #30363d', color: '#6e7681' }}
+                value={host}
+                onChange={e => setHost(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full px-2 py-1 rounded text-xs font-mono outline-none"
+                style={{
+                  background: '#0d1117',
+                  border: '1px solid #30363d',
+                  color: '#e6edf3',
+                }}
+                onFocus={e => { e.target.style.borderColor = '#388bfd' }}
+                onBlur={e => { e.target.style.borderColor = '#30363d' }}
               />
             </div>
 
@@ -264,13 +273,13 @@ function TerminalInstance({ tabId, active, panelOpen, onConnected, onDisconnecte
 
           <button
             onClick={connect}
-            disabled={!password || !username}
+            disabled={!host || !password || !username}
             className="w-full py-1.5 rounded text-xs font-mono transition-colors"
             style={{
-              background: (!password || !username) ? '#161b22' : '#1f6feb',
+              background: (!host || !password || !username) ? '#161b22' : '#1f6feb',
               border: '1px solid #30363d',
-              color: (!password || !username) ? '#6e7681' : '#f0f6fc',
-              cursor: (!password || !username) ? 'not-allowed' : 'pointer',
+              color: (!host || !password || !username) ? '#6e7681' : '#f0f6fc',
+              cursor: (!host || !password || !username) ? 'not-allowed' : 'pointer',
             }}
           >
             Connect
@@ -284,7 +293,7 @@ function TerminalInstance({ tabId, active, panelOpen, onConnected, onDisconnecte
     return (
       <div className="flex items-center justify-center h-full" style={{ background: '#0d1117' }}>
         <span className="text-xs font-mono animate-pulse" style={{ color: '#8b949e' }}>
-          Connecting to {SSH_HOST}…
+          Connecting to {host}…
         </span>
       </div>
     )
