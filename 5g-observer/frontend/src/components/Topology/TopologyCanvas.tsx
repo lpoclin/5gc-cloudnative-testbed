@@ -681,6 +681,9 @@ function TopologyCanvas({
   const metricsTimer   = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const trafficRef     = useRef(trafficEdgeIds ?? new Set<string>())
   const sbiLabelsRef   = useRef(new Map<string, string>())
+  const nodeMapRef     = useRef(new Map<string, TopologyNode>())
+  const rafRef         = useRef<number>(0)
+  const rafLoopRef     = useRef<((time: number) => void) | null>(null)
 
   const [nodeTip,       setNodeTip]       = useState<NodeTip | null>(null)
   const [dotTip,        setDotTip]        = useState<DotTip | null>(null)
@@ -730,6 +733,7 @@ function TopologyCanvas({
     for (const n of graph.nodes) m.set(n.id, n)
     return m
   }, [graph.nodes])
+  useEffect(() => { nodeMapRef.current = nodeMap }, [nodeMap])
 
   const savedPositions = useMemo<Record<string, { x: number; y: number }> | undefined>(() => {
     try { return JSON.parse(localStorage.getItem(storageKey) ?? 'null') ?? undefined }
@@ -748,8 +752,20 @@ function TopologyCanvas({
     const container = containerRef.current
     if (!canvas || !container) return
     const ro = new ResizeObserver(() => {
-      canvas.width  = container.clientWidth
-      canvas.height = container.clientHeight
+      const w = container.clientWidth
+      const h = container.clientHeight
+      // Only reassign if size actually changed — canvas.width/height assignment
+      // clears the canvas immediately (HTML spec). Guard prevents a blank frame
+      // on every resize event even when dimensions are unchanged.
+      if (canvas.width !== w || canvas.height !== h) {
+        cancelAnimationFrame(rafRef.current)
+        canvas.width  = w
+        canvas.height = h
+        // Redraw synchronously so canvas is never blank after a resize
+        runDraw(canvas, cyRef.current, performance.now() / 1000,
+          trafficRef.current, dotsRef, nodeMapRef.current, sbiLabelsRef.current)
+        if (rafLoopRef.current) rafRef.current = requestAnimationFrame(rafLoopRef.current)
+      }
     })
     ro.observe(container)
     canvas.width  = container.clientWidth
@@ -759,17 +775,17 @@ function TopologyCanvas({
 
   // ── RAF animation loop ───────────────────────────────────────────────────
   useEffect(() => {
-    let raf: number
     const loop = (time: number) => {
       runDraw(
         overlayRef.current, cyRef.current, time / 1000,
-        trafficRef.current, dotsRef, nodeMap, sbiLabelsRef.current,
+        trafficRef.current, dotsRef, nodeMapRef.current, sbiLabelsRef.current,
       )
-      raf = requestAnimationFrame(loop)
+      rafRef.current = requestAnimationFrame(loop)
     }
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-  }, [nodeMap])
+    rafLoopRef.current = loop
+    rafRef.current = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [])
 
   // ── Init Cytoscape ───────────────────────────────────────────────────────
   useEffect(() => {
