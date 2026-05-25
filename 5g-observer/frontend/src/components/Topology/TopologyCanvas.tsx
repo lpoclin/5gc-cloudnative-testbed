@@ -831,32 +831,65 @@ function TopologyCanvas({
 
       const mx = mousePos.current.x
       const my = mousePos.current.y
-      let hit: EndpointDot | null = null
+      // Read actual canvas width — excludes side panel (CSS flex already accounts for it)
+      const cw = containerRef.current?.clientWidth  ?? 1200
+      const ch = containerRef.current?.clientHeight ?? 800
+
+      // ── Step 1: dot hit test (3.5px tight radius) ──────────────────────
+      let dotHit: EndpointDot | null = null
       for (const d of dotsRef.current) {
         const dx = mx - d.x, dy = my - d.y
-        if (Math.sqrt(dx * dx + dy * dy) < 8) { hit = d; break }
+        if (Math.sqrt(dx * dx + dy * dy) <= 3.5) { dotHit = d; break }
       }
-      if (hit) {
+
+      if (dotHit) {
         clearTimeout(dotHideTimer.current)
-        const h = hit
-        const cw = containerRef.current?.clientWidth ?? 1200
-        const ch = containerRef.current?.clientHeight ?? 800
-        // Position tooltip 15px right, 10px up from dot center, clamped to canvas
+        clearTimeout(nodeTipTimer.current)
+        setNodeTip(null)
+        const h = dotHit
         const pos = {
           x: Math.min(h.x + 15, cw - 268),
           y: Math.max(4, Math.min(h.y - 10, ch - 168)),
         }
-        // Only update state when dot or position changes — prevents metrics re-fetch on micro-movement
         setDotTip(prev =>
           prev?.node.id === h.node.id && prev?.iface === h.iface &&
           Math.abs(prev.pos.x - pos.x) < 2 && Math.abs(prev.pos.y - pos.y) < 2
             ? prev
             : { node: h.node, iface: h.iface, pos },
         )
-        setNodeTip(null)
+        return
+      }
+
+      // Not on a dot — grace-period hide for dot tooltip
+      dotHideTimer.current = setTimeout(() => setDotTip(null), 300)
+
+      // ── Step 2: node box hit test (full rectangle, excluding dots) ──────
+      const TW = 220, TH = 120, M = 12
+      let nodeTipNext: NodeTip | null = null
+      cy.nodes().forEach(cn => {
+        if (nodeTipNext) return
+        const sp = cn.renderedPosition()
+        const nw = cn.renderedWidth()
+        const nh = cn.renderedHeight()
+        if (mx >= sp.x - nw / 2 && mx <= sp.x + nw / 2 &&
+            my >= sp.y - nh / 2 && my <= sp.y + nh / 2) {
+          const raw = cn.data('_node') as TopologyNode
+          if (!raw) return
+          let tx = sp.x + nw / 2 + M
+          let ty = sp.y - TH / 2
+          if (tx + TW > cw - 10) tx = sp.x - nw / 2 - M - TW
+          if (ty + TH > ch - 10) ty = ch - TH - 10
+          if (ty < 10) ty = 10
+          nodeTipNext = { node: raw, pos: { x: tx, y: ty } }
+        }
+      })
+
+      if (nodeTipNext) {
+        clearTimeout(nodeTipTimer.current)
+        setNodeTip(nodeTipNext)
       } else {
-        // 300ms grace period so mouse can reach the tooltip div without it vanishing
-        dotHideTimer.current = setTimeout(() => setDotTip(null), 300)
+        clearTimeout(nodeTipTimer.current)
+        nodeTipTimer.current = setTimeout(() => setNodeTip(null), 150)
       }
     }
 
@@ -884,23 +917,6 @@ function TopologyCanvas({
 
     cy.on('mouseover', 'node', (e: EventObject) => {
       ;(e.target as NodeSingular).addClass('hover')
-      clearTimeout(nodeTipTimer.current)
-      const raw = (e.target as NodeSingular).data('_node') as TopologyNode
-      if (!raw) return
-
-      const sp = (e.target as NodeSingular).renderedPosition()
-      const nw = (e.target as NodeSingular).renderedWidth()
-      const cw = containerRef.current?.clientWidth  ?? 1200
-      const ch = containerRef.current?.clientHeight ?? 800
-
-      const TW = 220, TH = 120, M = 12
-      let tx = sp.x + nw / 2 + M
-      let ty = sp.y - TH / 2
-      if (tx + TW > cw - 10)        tx = sp.x - nw / 2 - M - TW
-      if (ty + TH > ch - 10)        ty = ch - TH - 10
-      if (ty < 10)                  ty = 10
-
-      setNodeTip({ node: raw, pos: { x: tx, y: ty } })
     })
 
     cy.on('mouseout', 'node', (e: EventObject) => {
