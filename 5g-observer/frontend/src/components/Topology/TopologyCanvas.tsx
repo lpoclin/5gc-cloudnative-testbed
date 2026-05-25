@@ -428,24 +428,23 @@ function runDraw(
   // ── Heart health badges ────────────────────────────────────────────────────
   cy.nodes().forEach(cn => {
     const p     = cn.renderedPosition()
-    const w     = cn.renderedWidth()
     const h     = cn.renderedHeight()
     const color = badgeColor(cn.data('status') as string, (cn.data('restarts') as number) ?? 0)
 
-    // Bottom-right, 2px inset from border (Fix 5: 16×16px badge)
-    const bx = p.x + w / 2 - 10   // center-x of badge
-    const by = p.y + h / 2 - 10   // center-y of badge
+    // Centered horizontally, 8px above bottom border — inside node box, below label
+    const bx = p.x               // horizontally centered
+    const by = p.y + h / 2 - 8  // 8px above bottom border
 
     if (HEART_PATH) {
       ctx.save()
-      // Scale 14×14 heart path up to 16×16; center at (bx, by)
-      ctx.translate(bx - 8, by - 8)
-      ctx.scale(16 / 14, 16 / 14)
+      // Scale 14×14 heart path to 10×10; translate so heart is centered at (bx, by)
+      ctx.translate(bx - 5, by - 5)
+      ctx.scale(10 / 14, 10 / 14)
       ctx.fillStyle = color
       ctx.fill(HEART_PATH)
       ctx.restore()
     } else {
-      // Fallback: colored circle
+      // Fallback: colored circle (radius 5 = 10px diameter)
       ctx.beginPath()
       ctx.arc(bx, by, 5, 0, Math.PI * 2)
       ctx.fillStyle = color
@@ -456,7 +455,7 @@ function runDraw(
     if (color !== BADGE_OK) {
       const pulse = 0.5 + 0.5 * Math.sin(t * 3)
       ctx.beginPath()
-      ctx.arc(bx, by - 2, 9 + pulse * 4, 0, Math.PI * 2)
+      ctx.arc(bx, by, 9 + pulse * 4, 0, Math.PI * 2)
       ctx.strokeStyle = color
       ctx.globalAlpha = 0.35 * (1 - pulse)
       ctx.lineWidth = 1
