@@ -47,6 +47,10 @@ export const api = {
         `/api/metrics/pod/${encodeURIComponent(namespace)}/${encodeURIComponent(pod)}`,
       ),
     podsUtilization: () => request<PodMetricEntry[]>('/api/metrics/pods'),
+    interfaceMetrics: (pod: string, iface: string) =>
+      request<{ throughputMbps: number; packetsPerSec: number; dropRate: number }>(
+        `/api/metrics/interface?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}`
+      ),
   },
   nodes: {
     list: () => request<K8sNode[]>('/api/nodes'),

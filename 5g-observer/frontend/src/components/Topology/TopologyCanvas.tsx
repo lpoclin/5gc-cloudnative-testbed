@@ -605,7 +605,7 @@ function NodeTipBox({ tip, onEnter, onLeave }: { tip: NodeTip; onEnter: () => vo
         {n.nodeName && <span>Node: {n.nodeName}</span>}
       </div>
       <div className="mt-1.5">
-        <span style={{ color: '#58a6ff', fontSize: '11px' }}>▶ Click for logs &amp; metrics</span>
+        <span style={{ color: '#abb2bf', fontSize: '11px' }}>Click to view logs &amp; metrics</span>
       </div>
     </div>
   )
@@ -838,8 +838,8 @@ function TopologyCanvas({
       const mx = mousePos.current.x
       const my = mousePos.current.y
       // Read actual canvas width — excludes side panel (CSS flex already accounts for it)
-      const cw = containerRef.current?.clientWidth  ?? 1200
-      const ch = containerRef.current?.clientHeight ?? 800
+      const cw = containerRef.current?.clientWidth  ?? window.innerWidth
+      const ch = containerRef.current?.clientHeight ?? window.innerHeight
 
       // ── Step 1: dot hit test (3.5px tight radius) ──────────────────────
       let dotHit: EndpointDot | null = null
@@ -883,7 +883,8 @@ function TopologyCanvas({
           if (!raw) return
           let tx = sp.x + nw / 2 + M
           let ty = sp.y - TH / 2
-          if (tx + TW > cw - 10) tx = sp.x - nw / 2 - M - TW
+          if (tx + TW > cw) tx = sp.x - nw / 2 - M - TW
+          if (tx < 4) tx = 4
           if (ty + TH > ch - 10) ty = ch - TH - 10
           if (ty < 10) ty = 10
           nodeTipNext = { node: raw, pos: { x: tx, y: ty } }
