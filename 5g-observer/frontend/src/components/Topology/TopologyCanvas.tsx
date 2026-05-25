@@ -804,7 +804,7 @@ function TopologyCanvas({
     })
 
     cyRef.current = cy
-    cy.fit(cy.nodes(), 50)
+    cy.fit(cy.nodes(), 10)
     if (cy.zoom() > 0.9) cy.zoom(0.9)
     cy.center()
 

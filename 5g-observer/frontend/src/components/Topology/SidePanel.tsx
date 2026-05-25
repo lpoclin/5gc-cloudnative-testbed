@@ -82,16 +82,18 @@ function renderLogLine(raw: string) {
   if (!m) return <span style={{ color: '#abb2bf' }}>{clean}</span>
   const [, ts, level, component, subsystem, message] = m
   const lc = LOG_LEVEL_COLORS[level] ?? '#abb2bf'
+  // Wrap in a default-color span so uncolored text in renderMessage never
+  // inherits cyan or any other color from a parent element.
   return (
-    <>
+    <span style={{ color: '#abb2bf' }}>
       <span style={{ color: '#56b6c2' }}>{ts.slice(11, 23)}</span>
       {' '}
       <span style={{ color: lc }}>[{level}]</span>
-      <span style={{ color: '#abb2bf' }}>[{component}]</span>
-      <span style={{ color: '#abb2bf' }}>[{subsystem}]</span>
+      <span>[{component}]</span>
+      <span>[{subsystem}]</span>
       {' '}
       {renderMessage(message)}
-    </>
+    </span>
   )
 }
 
