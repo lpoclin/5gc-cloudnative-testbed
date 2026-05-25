@@ -521,9 +521,6 @@ function runDraw(
 
   // ── Endpoint dots ──────────────────────────────────────────────────────────
   const dots: EndpointDot[] = []
-  // key: "nodeId:ip" → first Cytoscape endpoint seen for that IP on that node
-  const sharedEndpoints = new Map<string, { x: number; y: number }>()
-  const dotDrawn = new Set<string>()   // keys already rendered
 
   cy.edges().forEach(ce => {
     const iface = ce.data('iface') as string
@@ -541,28 +538,12 @@ function runDraw(
     const dstN = nodeMap.get(edgeData.target)
 
     if (srcN) {
-      const ip  = srcN.interfaces.find(i => i.interface === iface)?.ips[0] ?? ''
-      const key = ip ? `${srcN.id}:${ip}` : ''
-      const ep  = key
-        ? (sharedEndpoints.get(key) ?? (sharedEndpoints.set(key, srcEp), srcEp))
-        : srcEp
-      if (!key || !dotDrawn.has(key)) {
-        if (key) dotDrawn.add(key)
-        drawEndDot(ctx, ep.x, ep.y, color, active, t)
-        dots.push({ x: ep.x, y: ep.y, node: srcN, iface, edge: edgeData, isActive: active })
-      }
+      drawEndDot(ctx, srcEp.x, srcEp.y, color, active, t)
+      dots.push({ x: srcEp.x, y: srcEp.y, node: srcN, iface, edge: edgeData, isActive: active })
     }
     if (dstN) {
-      const ip  = dstN.interfaces.find(i => i.interface === iface)?.ips[0] ?? ''
-      const key = ip ? `${dstN.id}:${ip}` : ''
-      const ep  = key
-        ? (sharedEndpoints.get(key) ?? (sharedEndpoints.set(key, dstEp), dstEp))
-        : dstEp
-      if (!key || !dotDrawn.has(key)) {
-        if (key) dotDrawn.add(key)
-        drawEndDot(ctx, ep.x, ep.y, color, active, t)
-        dots.push({ x: ep.x, y: ep.y, node: dstN, iface, edge: edgeData, isActive: active })
-      }
+      drawEndDot(ctx, dstEp.x, dstEp.y, color, active, t)
+      dots.push({ x: dstEp.x, y: dstEp.y, node: dstN, iface, edge: edgeData, isActive: active })
     }
   })
 
