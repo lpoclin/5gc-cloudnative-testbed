@@ -50,12 +50,14 @@ const LOG_LEVEL_COLORS: Record<string, string> = {
   INFO: '#56b6c2', DEBU: '#abb2bf', TRAC: '#5c6370', WARN: '#e5c07b', ERRO: '#e06c75', FATAL: '#c678dd',
 }
 
-// Strip Loki metadata timestamp prefix, then strip ANSI escape codes
 function cleanRaw(raw: string): string {
-  return raw
-    .replace(/^\S+Z\s+/, '')
-    .replace(/\x1b\[[0-9;]*m/g, '')
-    .replace(/\x1b/g, '')
+  // Strip ANSI codes first
+  let s = raw.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b/g, '')
+  // Only strip Loki prefix when the line has two timestamps (Loki prefix + raw log timestamp)
+  if (/^\S+Z\s+\d{4}-\d{2}-\d{2}T/.test(s)) {
+    s = s.replace(/^\S+Z\s+/, '')
+  }
+  return s.trim()
 }
 
 function renderMessage(msg: string) {
@@ -188,12 +190,11 @@ function NfLogColumn({
                 style={{
                   position: 'absolute',
                   top: item.start,
-                  width: '100%',
+                  minWidth: '100%',
                   height: item.size,
                   lineHeight: 1.4,
                   padding: '2px 4px',
                   whiteSpace: 'nowrap',
-                  overflow: 'hidden',
                 }}
               >
                 {renderLogLine(line.raw)}
