@@ -564,15 +564,16 @@ function NodeTipBox({ tip }: { tip: NodeTip }) {
   const n = tip.node
   const style: React.CSSProperties = {
     position: 'absolute',
-    left: tip.pos.x + 14,
-    top: Math.max(4, tip.pos.y - 10),
+    left: tip.pos.x,
+    top: tip.pos.y,
     zIndex: 50,
     pointerEvents: 'none',
     maxWidth: 280,
     background: '#161b22',
     border: `1px solid ${NODE_BORDER}`,
+    transition: 'opacity 120ms ease',
+    opacity: 1,
   }
-  if (tip.pos.x > 800) { style.left = undefined; style.right = 14 }
   return (
     <div style={style} className="rounded-lg p-3 text-xs shadow-2xl">
       <div className="flex items-center gap-2 mb-1">
@@ -597,7 +598,9 @@ function NodeTipBox({ tip }: { tip: NodeTip }) {
         <span>Age: {n.age}</span>
         {n.nodeName && <span>Node: {n.nodeName}</span>}
       </div>
-      <div className="mt-1.5" style={{ color: MUTED }}>[Click for logs &amp; metrics]</div>
+      <div className="mt-1.5">
+        <span style={{ color: '#58a6ff', fontSize: '11px' }}>▶ Click for logs &amp; metrics</span>
+      </div>
     </div>
   )
 }
@@ -884,14 +887,26 @@ function TopologyCanvas({
       clearTimeout(nodeTipTimer.current)
       const raw = (e.target as NodeSingular).data('_node') as TopologyNode
       if (!raw) return
-      const snap = { ...mousePos.current }
-      nodeTipTimer.current = setTimeout(() => setNodeTip({ node: raw, pos: snap }), 200)
+
+      const sp = (e.target as NodeSingular).renderedPosition()
+      const nw = (e.target as NodeSingular).renderedWidth()
+      const cw = containerRef.current?.clientWidth  ?? 1200
+      const ch = containerRef.current?.clientHeight ?? 800
+
+      const TW = 220, TH = 120, M = 12
+      let tx = sp.x + nw / 2 + M
+      let ty = sp.y - TH / 2
+      if (tx + TW > cw - 10)        tx = sp.x - nw / 2 - M - TW
+      if (ty + TH > ch - 10)        ty = ch - TH - 10
+      if (ty < 10)                  ty = 10
+
+      setNodeTip({ node: raw, pos: { x: tx, y: ty } })
     })
 
     cy.on('mouseout', 'node', (e: EventObject) => {
       ;(e.target as NodeSingular).removeClass('hover')
       clearTimeout(nodeTipTimer.current)
-      setNodeTip(null)
+      nodeTipTimer.current = setTimeout(() => setNodeTip(null), 150)
     })
 
     cy.on('tap', 'edge', (e: EventObject) => {
