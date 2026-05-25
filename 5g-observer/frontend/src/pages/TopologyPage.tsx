@@ -184,6 +184,7 @@ export default function TopologyPage() {
               onEdgeClick={handleEdgeClick}
               selectedNodeId={selectedNode?.id}
               namespace={namespace}
+              sidePanelOpen={sidePanelOpen}
             />
           )}
         </div>

@@ -12,6 +12,7 @@ interface Props {
   selectedNodeId?: string | null
   trafficEdgeIds?: Set<string>
   namespace?: string
+  sidePanelOpen?: boolean
 }
 
 interface NodeTip {
@@ -670,6 +671,7 @@ function TopologyCanvas({
   selectedNodeId,
   trafficEdgeIds,
   namespace = 'free5gc',
+  sidePanelOpen = false,
 }: Props) {
   const containerRef   = useRef<HTMLDivElement>(null)
   const overlayRef     = useRef<HTMLCanvasElement>(null)
@@ -804,8 +806,10 @@ function TopologyCanvas({
     })
 
     cyRef.current = cy
-    cy.fit(cy.nodes(), 10)
-    if (cy.zoom() > 0.9) cy.zoom(0.9)
+    cy.fit(cy.nodes(), 40)
+    const initZ = cy.zoom()
+    if (initZ > 0.9) cy.zoom(0.9)
+    if (initZ < 0.7) cy.zoom(0.7)
     cy.center()
 
     const onMove = (e: MouseEvent) => {
@@ -939,6 +943,20 @@ function TopologyCanvas({
     cy.elements().unselect()
     if (selectedNodeId) cy.getElementById(selectedNodeId).select()
   }, [selectedNodeId])
+
+  // ── Re-fit when side panel opens/closes (canvas area changes) ────────────
+  useEffect(() => {
+    const cy = cyRef.current
+    if (!cy) return
+    const t = setTimeout(() => {
+      cy.fit(cy.nodes(), 40)
+      const z = cy.zoom()
+      if (z > 0.9) cy.zoom(0.9)
+      if (z < 0.7) cy.zoom(0.7)
+      cy.center()
+    }, 50)
+    return () => clearTimeout(t)
+  }, [sidePanelOpen])
 
   // ── Reset layout ─────────────────────────────────────────────────────────
   const handleReset = useCallback(() => {
