@@ -521,6 +521,8 @@ function runDraw(
 
   // ── Endpoint dots ──────────────────────────────────────────────────────────
   const dots: EndpointDot[] = []
+  const dotSeenIPs = new Set<string>()   // dedup: "nodeId:ip" — one dot per unique IP per node
+
   cy.edges().forEach(ce => {
     const iface = ce.data('iface') as string
     if (iface === 'n1' || iface === 'sbi') return
@@ -537,12 +539,22 @@ function runDraw(
     const dstN = nodeMap.get(edgeData.target)
 
     if (srcN) {
-      drawEndDot(ctx, srcEp.x, srcEp.y, color, active, t)
-      dots.push({ x: srcEp.x, y: srcEp.y, node: srcN, iface, edge: edgeData, isActive: active })
+      const ip  = srcN.interfaces.find(i => i.interface === iface)?.ips[0] ?? ''
+      const key = ip ? `${srcN.id}:${ip}` : ''
+      if (!key || !dotSeenIPs.has(key)) {
+        if (key) dotSeenIPs.add(key)
+        drawEndDot(ctx, srcEp.x, srcEp.y, color, active, t)
+        dots.push({ x: srcEp.x, y: srcEp.y, node: srcN, iface, edge: edgeData, isActive: active })
+      }
     }
     if (dstN) {
-      drawEndDot(ctx, dstEp.x, dstEp.y, color, active, t)
-      dots.push({ x: dstEp.x, y: dstEp.y, node: dstN, iface, edge: edgeData, isActive: active })
+      const ip  = dstN.interfaces.find(i => i.interface === iface)?.ips[0] ?? ''
+      const key = ip ? `${dstN.id}:${ip}` : ''
+      if (!key || !dotSeenIPs.has(key)) {
+        if (key) dotSeenIPs.add(key)
+        drawEndDot(ctx, dstEp.x, dstEp.y, color, active, t)
+        dots.push({ x: dstEp.x, y: dstEp.y, node: dstN, iface, edge: edgeData, isActive: active })
+      }
     }
   })
 

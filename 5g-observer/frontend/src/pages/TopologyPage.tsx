@@ -174,13 +174,31 @@ export default function TopologyPage() {
         <div className="flex-1" />
 
         {/* Live indicator */}
-        <div className="flex items-center gap-1.5 text-xs">
-          <span
-            className={`w-2 h-2 rounded-full ${liveIndicator ? 'animate-pulse' : ''}`}
-            style={{ background: liveIndicator ? '#3fb950' : '#30363d' }}
-          />
-          <span style={{ color: '#8b949e' }}>{liveIndicator ? 'live' : 'loading'}</span>
-        </div>
+        {liveIndicator ? (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            border: '1px solid #3fb950', borderRadius: 4,
+            padding: '3px 10px', background: 'rgba(63,185,80,0.08)',
+          }}>
+            <div style={{ position: 'relative', width: 10, height: 10 }}>
+              <div style={{
+                position: 'absolute', inset: 0,
+                borderRadius: '50%', border: '2px solid #3fb950',
+                animation: 'ripple 1.5s ease-out infinite',
+              }} />
+              <div style={{
+                position: 'absolute', inset: '2px',
+                borderRadius: '50%', background: '#3fb950',
+              }} />
+            </div>
+            <span style={{ color: '#3fb950', fontWeight: 'bold', fontSize: 13, letterSpacing: '0.05em' }}>LIVE</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="w-2 h-2 rounded-full" style={{ background: '#30363d' }} />
+            <span style={{ color: '#8b949e' }}>loading</span>
+          </div>
+        )}
 
         <button
           onClick={() => refetch()}
