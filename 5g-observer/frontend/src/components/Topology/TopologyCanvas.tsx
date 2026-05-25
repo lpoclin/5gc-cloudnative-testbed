@@ -806,7 +806,7 @@ function TopologyCanvas({
     })
 
     cyRef.current = cy
-    cy.fit(cy.nodes(), 40)
+    cy.fit(cy.nodes(), 5)
     const initZ = cy.zoom()
     if (initZ > 0.9) cy.zoom(0.9)
     if (initZ < 0.7) cy.zoom(0.7)
@@ -949,12 +949,13 @@ function TopologyCanvas({
     const cy = cyRef.current
     if (!cy) return
     const t = setTimeout(() => {
-      cy.fit(cy.nodes(), 40)
+      cy.resize()
+      cy.fit(cy.nodes(), 5)
       const z = cy.zoom()
       if (z > 0.9) cy.zoom(0.9)
       if (z < 0.7) cy.zoom(0.7)
       cy.center()
-    }, 50)
+    }, 100)
     return () => clearTimeout(t)
   }, [sidePanelOpen])
 
