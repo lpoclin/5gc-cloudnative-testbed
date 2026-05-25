@@ -120,7 +120,7 @@ function NfLogColumn({
   const [level, setLevel] = useState<LogLevel>('all')
   const lastAnimTs   = useRef(0)
   const animTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const [animIdx, setAnimIdx] = useState(-1)
+  const [animRange, setAnimRange] = useState<{ newIdx: number; batchStart: number } | null>(null)
   const prevLen      = useRef(0)
 
   const filtered = useMemo(() => {
@@ -156,9 +156,9 @@ function NfLogColumn({
       const now = Date.now()
       if (now - lastAnimTs.current >= 100) {
         clearTimeout(animTimerRef.current)
-        setAnimIdx(newLen - 1)
+        setAnimRange({ newIdx: newLen - 1, batchStart: Math.max(prevLen.current, newLen - 4) })
         lastAnimTs.current = now
-        animTimerRef.current = setTimeout(() => setAnimIdx(-1), 300)
+        animTimerRef.current = setTimeout(() => setAnimRange(null), 600)
       }
     }
     prevLen.current = newLen
@@ -220,7 +220,7 @@ function NfLogColumn({
       <div
         ref={parentRef}
         className="flex-1 overflow-y-auto overflow-x-auto"
-        style={{ background: '#0d1117', fontFamily: '"JetBrains Mono", "Cascadia Code", monospace', fontSize: 12 }}
+        style={{ background: '#080c10', fontFamily: '"JetBrains Mono", "Cascadia Code", monospace', fontSize: 12 }}
         onMouseEnter={() => logs.setAutoScroll(false)}
         onMouseLeave={() => logs.setAutoScroll(true)}
       >
@@ -230,7 +230,13 @@ function NfLogColumn({
             return (
               <div
                 key={item.key}
-                className={item.index === animIdx ? 'log-new' : undefined}
+                className={
+                  item.index === animRange?.newIdx
+                    ? 'log-new'
+                    : item.index >= (animRange?.batchStart ?? -1) && item.index < (animRange?.newIdx ?? -1)
+                      ? 'log-new-batch'
+                      : undefined
+                }
                 style={{
                   position: 'absolute',
                   top: item.start,

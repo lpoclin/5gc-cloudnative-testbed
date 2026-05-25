@@ -92,6 +92,10 @@
 }
 .log-new {
   animation: logFadeIn 180ms ease-out forwards;
+  border-left: 2px solid #3fb950;
+}
+.log-new-batch {
+  border-left: 2px solid rgba(63,185,80,0.4);
 }
 
 @keyframes pulse {
