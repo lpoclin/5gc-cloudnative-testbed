@@ -66,6 +66,7 @@ function computePositions(
   nodes: TopologyNode[],
   saved?: Record<string, { x: number; y: number }>,
 ): Map<string, { x: number; y: number }> {
+  const nodeW   = 120   // logical node width for layout spacing
   const isULCL = nodes.some(n => n.nfType === 'iUPF')
   const pos = new Map<string, { x: number; y: number }>()
   if (saved) for (const n of nodes) if (saved[n.id]) pos.set(n.id, saved[n.id])
@@ -102,25 +103,30 @@ function computePositions(
   place('gNB', 240, BOT_ROW_Y, 80)
 
   if (isULCL) {
-    // E2: iUPF1_x=440, PSA-UPF1: x=660 y=bottomRow-50, PSA-UPF2: x=660 y=bottomRow+50
     place('iUPF', 440, BOT_ROW_Y, 80)
-    const psas = groups.get('PSA_UPF') ?? []
+    const psas       = groups.get('PSA_UPF') ?? []
+    const psaSpacing = nodeW * 0.6
+    const psaTotalW  = (psas.length - 1) * psaSpacing
     psas.forEach((n, i) => {
       if (pos.has(n.id)) return
+      const xOff = i * psaSpacing - psaTotalW / 2
       const yOff = psas.length > 1 ? (i === 0 ? -50 : 50) : 0
-      pos.set(n.id, { x: 660, y: BOT_ROW_Y + yOff })
+      pos.set(n.id, { x: 660 + xOff, y: BOT_ROW_Y + yOff })
     })
   } else {
     place('UPF', 480, BOT_ROW_Y, 130)
   }
 
-  // DN nodes (rightmost) — E2: ULCL DN x=860
-  const dns = nodes.filter(n => n.nfType === 'DN')
-  const dnBaseX = isULCL ? 860 : 680
+  // DN nodes — positioned relative to PSA-UPF1 (index 0) in ULCL, fixed otherwise
+  const dns        = nodes.filter(n => n.nfType === 'DN')
+  const psasForDn  = groups.get('PSA_UPF') ?? []
+  const psaUPF1Pos = pos.get(psasForDn[0]?.id)
+  const dnBaseX    = psaUPF1Pos ? psaUPF1Pos.x + nodeW * 0.6 : (isULCL ? 860 : 680)
+  const dnY        = psaUPF1Pos ? psaUPF1Pos.y : BOT_ROW_Y
   dns.forEach((n, i) => {
     if (pos.has(n.id)) return
     const off = (i - (dns.length - 1) / 2) * 130
-    pos.set(n.id, { x: dnBaseX + off, y: BOT_ROW_Y })
+    pos.set(n.id, { x: dnBaseX + off, y: dnY })
   })
 
   return pos

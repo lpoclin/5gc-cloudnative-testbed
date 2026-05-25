@@ -122,12 +122,12 @@ export default function TopologyPage() {
     const existing = nfTabs.find(t => t.id === clickedNode.id)
     if (existing) {
       setActiveNfTabId(clickedNode.id)
-    } else {
-      setNfTabs(prev => [...prev, { id: clickedNode.id, node: clickedNode, view: 'logs' }])
-      setActiveNfTabId(clickedNode.id)
-      setSidePanelOpen(true)
-      setSideWidth(800)
+      return
     }
+    setNfTabs(prev => [...prev, { id: clickedNode.id, node: clickedNode, view: 'logs' }])
+    setActiveNfTabId(clickedNode.id)
+    setSidePanelOpen(true)
+    setSideWidth(800)
   }, [nfTabs])
 
   const handleTabClose = useCallback((closedId: string) => {
