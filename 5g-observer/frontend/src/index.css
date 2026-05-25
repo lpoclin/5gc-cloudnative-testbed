@@ -85,3 +85,16 @@
 .proto-nas { color: #fbbf24; }
 .proto-dns { color: #2dd4bf; }
 .proto-other { color: #9ca3af; }
+
+@keyframes logFadeIn {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.log-new {
+  animation: logFadeIn 180ms ease-out forwards;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1);   opacity: 1;   }
+  50%       { transform: scale(1.4); opacity: 0.7; }
+}

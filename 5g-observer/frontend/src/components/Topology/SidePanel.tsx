@@ -50,7 +50,7 @@ function StatusBadge({ node }: { node: TopologyNode }) {
 
 // ─── Log line rendering ───────────────────────────────────────────────────────
 
-const FREE5GC_LOG_RE = /^(\S+Z)\s+\[(\w+)\]\[(\w+)\]\[([^\]]+)\]\s+(.*)$/
+const FREE5GC_LOG_RE = /^(\S+Z)\s+\[(\w+)\]\[(\w+)\]\[([^\]]+)\](?:\[[^\]]+\])*\s+(.*)$/
 
 const LOG_LEVEL_COLORS: Record<string, string> = {
   INFO: '#56b6c2', DEBU: '#abb2bf', TRAC: '#5c6370', WARN: '#e5c07b', ERRO: '#e06c75', FATAL: '#c678dd',
@@ -85,7 +85,10 @@ function renderMessage(msg: string) {
 function renderLogLine(raw: string) {
   const clean = cleanRaw(raw)
   const m = FREE5GC_LOG_RE.exec(clean)
-  if (!m) return <span style={{ color: '#abb2bf' }}>{clean}</span>
+  if (!m) {
+    if (import.meta.env.DEV) console.log('[SidePanel] unmatched line:', clean.slice(0, 80))
+    return <span style={{ color: '#abb2bf' }}>{clean}</span>
+  }
   const [, ts, level, component, subsystem, message] = m
   const lc = LOG_LEVEL_COLORS[level] ?? '#abb2bf'
   // Wrap in a default-color span so uncolored text in renderMessage never
@@ -115,6 +118,10 @@ function NfLogColumn({
   const parentRef = useRef<HTMLDivElement>(null)
   const [search, setSearch] = useState('')
   const [level, setLevel] = useState<LogLevel>('all')
+  const lastAnimTs   = useRef(0)
+  const animTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [animIdx, setAnimIdx] = useState(-1)
+  const prevLen      = useRef(0)
 
   const filtered = useMemo(() => {
     let lines = logs.lines
@@ -142,14 +149,42 @@ function NfLogColumn({
     }
   }, [filtered.length, logs.autoScroll, virtualizer])
 
+  // ── New-entry animation (100ms throttle) ──────────────────────────────────
+  useEffect(() => {
+    const newLen = filtered.length
+    if (newLen > prevLen.current) {
+      const now = Date.now()
+      if (now - lastAnimTs.current >= 100) {
+        clearTimeout(animTimerRef.current)
+        setAnimIdx(newLen - 1)
+        lastAnimTs.current = now
+        animTimerRef.current = setTimeout(() => setAnimIdx(-1), 300)
+      }
+    }
+    prevLen.current = newLen
+  }, [filtered.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => clearTimeout(animTimerRef.current), [])
+
   return (
     <div className="flex flex-col flex-1 min-w-0 border-r border-border last:border-0">
       {/* Column header */}
-      <div className="flex items-center gap-1 px-2 py-1.5 bg-bg-secondary border-b border-border shrink-0">
+      <div className="flex items-center gap-2 px-2 py-1.5 bg-bg-secondary border-b border-border shrink-0">
         <span className="text-xs font-mono font-semibold text-blue-400 flex-1 truncate">
           {node.displayName} <span className="text-slate-500">·</span>{' '}
           <span className="text-slate-400 font-normal">{node.podName}</span>
         </span>
+        {logs.live ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#3fb950', fontWeight: 'bold', fontSize: 12 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3fb950', animation: 'pulse 1s ease-in-out infinite', display: 'inline-block' }} />
+            LIVE
+          </span>
+        ) : (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#6e7681', fontSize: 12 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#6e7681', display: 'inline-block' }} />
+            CONNECTING
+          </span>
+        )}
         <button
           onClick={onRemove}
           className="text-slate-600 hover:text-slate-300 shrink-0"
@@ -195,6 +230,7 @@ function NfLogColumn({
             return (
               <div
                 key={item.key}
+                className={item.index === animIdx ? 'log-new' : undefined}
                 style={{
                   position: 'absolute',
                   top: item.start,

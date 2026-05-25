@@ -58,6 +58,7 @@ interface LogState {
   level: LogLevel
   autoScroll: boolean
   showTimestamps: boolean
+  live: boolean
 }
 
 type Action =
@@ -67,6 +68,7 @@ type Action =
   | { type: 'SET_LEVEL'; level: LogLevel }
   | { type: 'SET_AUTO_SCROLL'; value: boolean }
   | { type: 'TOGGLE_TIMESTAMPS' }
+  | { type: 'SET_LIVE'; value: boolean }
 
 function reducer(state: LogState, action: Action): LogState {
   switch (action.type) {
@@ -84,6 +86,8 @@ function reducer(state: LogState, action: Action): LogState {
       return { ...state, autoScroll: action.value }
     case 'TOGGLE_TIMESTAMPS':
       return { ...state, showTimestamps: !state.showTimestamps }
+    case 'SET_LIVE':
+      return { ...state, live: action.value }
     default:
       return state
   }
@@ -95,6 +99,7 @@ const initial: LogState = {
   level: 'all',
   autoScroll: true,
   showTimestamps: true,
+  live: false,
 }
 
 export function useLogs(namespace: string, podName: string, enabled = true) {
@@ -111,6 +116,8 @@ export function useLogs(namespace: string, podName: string, enabled = true) {
 
     // WSManager dispatches env.data (string[]) when subscribed to a specific type.
     // Each string may have a Loki timestamp prefix: "ISO_TS\tlog_line"
+    mgr.onStateChange = (connected) => dispatch({ type: 'SET_LIVE', value: connected })
+
     mgr.on<string[]>('log_lines', (lines) => {
       const parsed: LogLine[] = lines.map(r => {
         const { timestamp, level, message } = parseRawLine(r)
@@ -145,6 +152,7 @@ export function useLogs(namespace: string, podName: string, enabled = true) {
     level: state.level,
     autoScroll: state.autoScroll,
     showTimestamps: state.showTimestamps,
+    live: state.live,
     setSearch: (s: string) => dispatch({ type: 'SET_SEARCH', search: s }),
     setLevel: (l: LogLevel) => dispatch({ type: 'SET_LEVEL', level: l }),
     setAutoScroll: (v: boolean) => dispatch({ type: 'SET_AUTO_SCROLL', value: v }),
