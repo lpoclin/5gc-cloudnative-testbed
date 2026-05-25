@@ -392,12 +392,12 @@ function runDraw(
     ctx.lineWidth = 4
     ctx.stroke()
 
-    // Bus label — far left of canvas, vertically centered on bus line
-    ctx.font = `${10 * zoom}px Inter, system-ui, sans-serif`
-    ctx.fillStyle = MUTED
+    // Bus label — just inside the left end of the line, below it
+    ctx.font = 'bold 11px "Inter, system-ui, sans-serif"'
+    ctx.fillStyle = '#ffffff'
     ctx.textAlign = 'left'
-    ctx.textBaseline = 'middle'
-    ctx.fillText('SBI', 12, busScrY)
+    ctx.textBaseline = 'top'
+    ctx.fillText('SBI', busXMin - pad + 8, busScrY + 10)
     ctx.textBaseline = 'alphabetic'
 
     // Connectors + interface labels
