@@ -44,27 +44,38 @@ export default function TopologyPage() {
   const { push } = useToast()
 
   // ── Side panel drag ────────────────────────────────────────────────────────
-  const sideDragStart = useRef<{ x: number; w: number } | null>(null)
+  // DOM-direct updates during drag — setSideWidth called once on mouseup only.
+  const sideCurrentWidthRef   = useRef(getSaved('5g-observer-sidepanel-width', SIDE_DEFAULT))
+  const sidePanelContainerRef = useRef<HTMLDivElement>(null)
+  const sideDragStart         = useRef<{ x: number; w: number } | null>(null)
+
+  // Keep ref in sync when state changes externally (e.g. node click sets 800px)
+  useEffect(() => { sideCurrentWidthRef.current = sideWidth }, [sideWidth])
+
   const onSideMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
-    sideDragStart.current = { x: e.clientX, w: sideWidth }
-  }, [sideWidth])
+    sideDragStart.current = { x: e.clientX, w: sideCurrentWidthRef.current }
+  }, [])
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!sideDragStart.current) return
       const delta = sideDragStart.current.x - e.clientX   // dragging left handle: move left → wider
       const next  = Math.min(SIDE_MAX, Math.max(SIDE_MIN, sideDragStart.current.w + delta))
-      setSideWidth(next)
+      sideCurrentWidthRef.current = next
+      if (sidePanelContainerRef.current) sidePanelContainerRef.current.style.width = next + 'px'
     }
     const onUp = () => {
       if (!sideDragStart.current) return
-      try { localStorage.setItem('5g-observer-sidepanel-width', String(sideWidth)) } catch { /* ok */ }
+      const w = sideCurrentWidthRef.current
+      try { localStorage.setItem('5g-observer-sidepanel-width', String(w)) } catch { /* ok */ }
       sideDragStart.current = null
+      setSideWidth(w)
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [sideWidth])
+  }, [])
 
   // ── Terminal panel drag ────────────────────────────────────────────────────
   // termCurrentHeightRef tracks the live drag height without triggering re-renders.
@@ -192,6 +203,7 @@ export default function TopologyPage() {
         {/* Side panel with drag handle — always visible when graph is loaded */}
         {sidePanelOpen && graph && (
           <div
+            ref={sidePanelContainerRef}
             className="shrink-0 h-full flex"
             style={{ width: sideWidth, borderLeft: '1px solid #30363d' }}
           >

@@ -753,26 +753,30 @@ function TopologyCanvas({
     const canvas    = overlayRef.current
     const container = containerRef.current
     if (!canvas || !container) return
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined
     const ro = new ResizeObserver(() => {
-      const w = container.clientWidth
-      const h = container.clientHeight
-      // Only reassign if size actually changed — canvas.width/height assignment
-      // clears the canvas immediately (HTML spec). Guard prevents a blank frame
-      // on every resize event even when dimensions are unchanged.
-      if (canvas.width !== w || canvas.height !== h) {
-        cancelAnimationFrame(rafRef.current)
-        canvas.width  = w
-        canvas.height = h
-        // Redraw synchronously so canvas is never blank after a resize
-        runDraw(canvas, cyRef.current, performance.now() / 1000,
-          trafficRef.current, dotsRef, nodeMapRef.current, sbiLabelsRef.current)
-        if (rafLoopRef.current) rafRef.current = requestAnimationFrame(rafLoopRef.current)
-      }
+      clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        const w = container.clientWidth
+        const h = container.clientHeight
+        // Only reassign if size actually changed — canvas.width/height assignment
+        // clears the canvas immediately (HTML spec). Guard prevents a blank frame
+        // on every resize event even when dimensions are unchanged.
+        if (canvas.width !== w || canvas.height !== h) {
+          cancelAnimationFrame(rafRef.current)
+          canvas.width  = w
+          canvas.height = h
+          // Redraw synchronously so canvas is never blank after a resize
+          runDraw(canvas, cyRef.current, performance.now() / 1000,
+            trafficRef.current, dotsRef, nodeMapRef.current, sbiLabelsRef.current)
+          if (rafLoopRef.current) rafRef.current = requestAnimationFrame(rafLoopRef.current)
+        }
+      }, 16)
     })
     ro.observe(container)
     canvas.width  = container.clientWidth
     canvas.height = container.clientHeight
-    return () => ro.disconnect()
+    return () => { ro.disconnect(); clearTimeout(resizeTimer) }
   }, [])
 
   // ── RAF animation loop ───────────────────────────────────────────────────
