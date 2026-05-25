@@ -173,7 +173,7 @@ function NfLogColumn({
   useEffect(() => () => clearTimeout(animTimerRef.current), [])
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 border-r border-border last:border-0">
+    <div className="flex flex-col flex-1 min-w-0 min-h-0 border-r border-border last:border-0">
       {/* Column header */}
       <div className="flex items-center gap-2 px-2 py-1.5 bg-bg-secondary border-b border-border shrink-0">
         <span className="text-xs font-mono font-semibold text-blue-400 flex-1 truncate">
@@ -200,19 +200,22 @@ function NfLogColumn({
       </div>
 
       {/* Filter row */}
-      <div className="flex items-center gap-1 px-1.5 py-1 bg-bg-tertiary border-b border-border shrink-0">
+      <div className="flex items-center gap-1 px-1.5 py-1 shrink-0" style={{ background: '#0d1117', borderBottom: '1px solid #30363d' }}>
         <input
           type="text"
           placeholder="filter…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-0 bg-transparent text-xs text-slate-300 placeholder-slate-600
-                     outline-none border border-transparent focus:border-blue-600/50 rounded px-1 py-0.5"
+          className="flex-1 min-w-0 bg-transparent text-xs outline-none px-1.5 py-0.5"
+          style={{ border: '1px solid #30363d', borderRadius: 4, color: '#f0f6fc' }}
+          onFocus={e => (e.currentTarget.style.borderColor = '#58a6ff')}
+          onBlur={e => (e.currentTarget.style.borderColor = '#30363d')}
         />
         <select
           value={level}
           onChange={e => setLevel(e.target.value as LogLevel)}
-          className="text-xs bg-bg-secondary text-slate-400 border border-border rounded px-1 py-0.5 outline-none"
+          className="text-xs outline-none px-1 py-0.5 shrink-0"
+          style={{ border: '1px solid #30363d', borderRadius: 4, background: '#161b22', color: '#f0f6fc' }}
         >
           <option value="all">all</option>
           <option value="info">info</option>
@@ -446,7 +449,7 @@ export default function SidePanel({ node, allNodes: _allNodes, onClose, onCaptur
         </div>
       ) : (
         /* Logs view: single column for active tab */
-        <div className="flex flex-col flex-1 min-h-0">
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <NfLogColumn key={node.id} node={node} onRemove={() => onTabClose(node.id)} />
         </div>
       )}
