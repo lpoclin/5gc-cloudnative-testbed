@@ -208,8 +208,9 @@ function buildStylesheet() {
         'opacity': 'data(opacity)',
         'overlay-opacity': 0,
         'label': 'data(label)',
-        'font-size': 9,
-        'color': MUTED,
+        'font-size': 12,
+        'font-weight': 'bold',
+        'color': '#ffffff',
         'text-rotation': 'autorotate',
         'text-background-color': BG,
         'text-background-opacity': 0.9,
@@ -391,11 +392,13 @@ function runDraw(
     ctx.lineWidth = 4
     ctx.stroke()
 
-    // Bus label (D3: no HTTP/2 suffix — free5GC uses HTTP/1.1)
+    // Bus label — far left of canvas, vertically centered on bus line
     ctx.font = `${10 * zoom}px Inter, system-ui, sans-serif`
     ctx.fillStyle = MUTED
-    ctx.textAlign = 'center'
-    ctx.fillText('SBI Bus', (busXMin + busXMax) / 2, busScrY + 14 * zoom)
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('SBI', 12, busScrY)
+    ctx.textBaseline = 'alphabetic'
 
     // Connectors + interface labels
     ctx.setLineDash([Math.max(3, 4 * zoom), Math.max(2, 3 * zoom)])
@@ -442,6 +445,9 @@ function runDraw(
       ctx.scale(10 / 14, 10 / 14)
       ctx.fillStyle = color
       ctx.fill(HEART_PATH)
+      ctx.strokeStyle = '#0d1117'
+      ctx.lineWidth = 1.5
+      ctx.stroke(HEART_PATH)
       ctx.restore()
     } else {
       // Fallback: colored circle (radius 5 = 10px diameter)
