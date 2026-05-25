@@ -347,18 +347,6 @@ function drawEndDot(
   ctx.stroke()
 }
 
-function nodeFaceCenter(
-  sp: { x: number; y: number }, nw: number, nh: number,
-  toward: { x: number; y: number },
-): { x: number; y: number } {
-  const dx = toward.x - sp.x
-  const dy = toward.y - sp.y
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0 ? { x: sp.x + nw / 2, y: sp.y } : { x: sp.x - nw / 2, y: sp.y }
-  }
-  return dy >= 0 ? { x: sp.x, y: sp.y + nh / 2 } : { x: sp.x, y: sp.y - nh / 2 }
-}
-
 function runDraw(
   canvas: HTMLCanvasElement | null,
   cy: Core | null,
@@ -533,7 +521,9 @@ function runDraw(
 
   // ── Endpoint dots ──────────────────────────────────────────────────────────
   const dots: EndpointDot[] = []
-  const dotSeenIPs = new Set<string>()   // dedup: "nodeId:ip" — one dot per unique IP per node
+  // key: "nodeId:ip" → first Cytoscape endpoint seen for that IP on that node
+  const sharedEndpoints = new Map<string, { x: number; y: number }>()
+  const dotDrawn = new Set<string>()   // keys already rendered
 
   cy.edges().forEach(ce => {
     const iface = ce.data('iface') as string
@@ -541,11 +531,9 @@ function runDraw(
     const edgeData = ce.data('_edge') as TopologyEdge
     if (!edgeData) return
 
-    const srcCy  = ce.source() as NodeSingular
-    const dstCy  = ce.target() as NodeSingular
-    const srcSp  = srcCy.renderedPosition()
-    const dstSp  = dstCy.renderedPosition()
-    const lc     = ce.data('lineColor') as string
+    const srcEp = toS(ce.sourceEndpoint())
+    const dstEp = toS(ce.targetEndpoint())
+    const lc    = ce.data('lineColor') as string
     const active = traffic.has(ce.id())
     const color  = active ? lc : DOT_IDLE
 
@@ -555,11 +543,11 @@ function runDraw(
     if (srcN) {
       const ip  = srcN.interfaces.find(i => i.interface === iface)?.ips[0] ?? ''
       const key = ip ? `${srcN.id}:${ip}` : ''
-      if (!key || !dotSeenIPs.has(key)) {
-        if (key) dotSeenIPs.add(key)
-        const ep = key
-          ? nodeFaceCenter(srcSp, srcCy.renderedWidth(), srcCy.renderedHeight(), dstSp)
-          : toS(ce.sourceEndpoint())
+      const ep  = key
+        ? (sharedEndpoints.get(key) ?? (sharedEndpoints.set(key, srcEp), srcEp))
+        : srcEp
+      if (!key || !dotDrawn.has(key)) {
+        if (key) dotDrawn.add(key)
         drawEndDot(ctx, ep.x, ep.y, color, active, t)
         dots.push({ x: ep.x, y: ep.y, node: srcN, iface, edge: edgeData, isActive: active })
       }
@@ -567,11 +555,11 @@ function runDraw(
     if (dstN) {
       const ip  = dstN.interfaces.find(i => i.interface === iface)?.ips[0] ?? ''
       const key = ip ? `${dstN.id}:${ip}` : ''
-      if (!key || !dotSeenIPs.has(key)) {
-        if (key) dotSeenIPs.add(key)
-        const ep = key
-          ? nodeFaceCenter(dstSp, dstCy.renderedWidth(), dstCy.renderedHeight(), srcSp)
-          : toS(ce.targetEndpoint())
+      const ep  = key
+        ? (sharedEndpoints.get(key) ?? (sharedEndpoints.set(key, dstEp), dstEp))
+        : dstEp
+      if (!key || !dotDrawn.has(key)) {
+        if (key) dotDrawn.add(key)
         drawEndDot(ctx, ep.x, ep.y, color, active, t)
         dots.push({ x: ep.x, y: ep.y, node: dstN, iface, edge: edgeData, isActive: active })
       }
