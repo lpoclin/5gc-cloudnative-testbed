@@ -347,6 +347,18 @@ function drawEndDot(
   ctx.stroke()
 }
 
+function nodeFaceCenter(
+  sp: { x: number; y: number }, nw: number, nh: number,
+  toward: { x: number; y: number },
+): { x: number; y: number } {
+  const dx = toward.x - sp.x
+  const dy = toward.y - sp.y
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? { x: sp.x + nw / 2, y: sp.y } : { x: sp.x - nw / 2, y: sp.y }
+  }
+  return dy >= 0 ? { x: sp.x, y: sp.y + nh / 2 } : { x: sp.x, y: sp.y - nh / 2 }
+}
+
 function runDraw(
   canvas: HTMLCanvasElement | null,
   cy: Core | null,
@@ -529,8 +541,10 @@ function runDraw(
     const edgeData = ce.data('_edge') as TopologyEdge
     if (!edgeData) return
 
-    const srcEp  = toS(ce.sourceEndpoint())
-    const dstEp  = toS(ce.targetEndpoint())
+    const srcCy  = ce.source() as NodeSingular
+    const dstCy  = ce.target() as NodeSingular
+    const srcSp  = srcCy.renderedPosition()
+    const dstSp  = dstCy.renderedPosition()
     const lc     = ce.data('lineColor') as string
     const active = traffic.has(ce.id())
     const color  = active ? lc : DOT_IDLE
@@ -543,8 +557,11 @@ function runDraw(
       const key = ip ? `${srcN.id}:${ip}` : ''
       if (!key || !dotSeenIPs.has(key)) {
         if (key) dotSeenIPs.add(key)
-        drawEndDot(ctx, srcEp.x, srcEp.y, color, active, t)
-        dots.push({ x: srcEp.x, y: srcEp.y, node: srcN, iface, edge: edgeData, isActive: active })
+        const ep = key
+          ? nodeFaceCenter(srcSp, srcCy.renderedWidth(), srcCy.renderedHeight(), dstSp)
+          : toS(ce.sourceEndpoint())
+        drawEndDot(ctx, ep.x, ep.y, color, active, t)
+        dots.push({ x: ep.x, y: ep.y, node: srcN, iface, edge: edgeData, isActive: active })
       }
     }
     if (dstN) {
@@ -552,8 +569,11 @@ function runDraw(
       const key = ip ? `${dstN.id}:${ip}` : ''
       if (!key || !dotSeenIPs.has(key)) {
         if (key) dotSeenIPs.add(key)
-        drawEndDot(ctx, dstEp.x, dstEp.y, color, active, t)
-        dots.push({ x: dstEp.x, y: dstEp.y, node: dstN, iface, edge: edgeData, isActive: active })
+        const ep = key
+          ? nodeFaceCenter(dstSp, dstCy.renderedWidth(), dstCy.renderedHeight(), srcSp)
+          : toS(ce.targetEndpoint())
+        drawEndDot(ctx, ep.x, ep.y, color, active, t)
+        dots.push({ x: ep.x, y: ep.y, node: dstN, iface, edge: edgeData, isActive: active })
       }
     }
   })
