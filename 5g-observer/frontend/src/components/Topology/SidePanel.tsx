@@ -50,7 +50,7 @@ function StatusBadge({ node }: { node: TopologyNode }) {
 
 // ─── Log line rendering ───────────────────────────────────────────────────────
 
-const FREE5GC_LOG_RE = /^(\S+Z)\s+\[(\w+)\]\[(\w+)\]\[(\w+)\]\s+(.*)$/
+const FREE5GC_LOG_RE = /^(\S+Z)\s+\[(\w+)\]\[(\w+)\]\[([^\]]+)\]\s+(.*)$/
 
 const LOG_LEVEL_COLORS: Record<string, string> = {
   INFO: '#56b6c2', DEBU: '#abb2bf', TRAC: '#5c6370', WARN: '#e5c07b', ERRO: '#e06c75', FATAL: '#c678dd',
@@ -216,7 +216,11 @@ function NfLogColumn({
 }
 
 // ─── Pod info section ─────────────────────────────────────────────────────────
-function PodInfo({ node }: { node: TopologyNode }) {
+function PodInfo({ node, ifaceMetrics, clusterInfo }: {
+  node: TopologyNode
+  ifaceMetrics: MetricsMap
+  clusterInfo: ClusterInfo | undefined
+}) {
   return (
     <div className="px-4 py-3 space-y-2 shrink-0 border-b border-border">
       <div className="flex items-center justify-between">
@@ -242,22 +246,49 @@ function PodInfo({ node }: { node: TopologyNode }) {
         </div>
       </div>
 
-      {/* Interfaces */}
-      <div className="space-y-0.5">
-        {node.interfaces.map(iface => (
-          <div key={iface.name} className="flex items-center gap-2 text-xs font-mono">
-            <span
-              className={clsx(
-                'w-10 text-right shrink-0',
-                iface.isDefault ? 'text-blue-400' : 'text-green-400',
-              )}
-            >
-              {iface.interface}
-            </span>
-            <span className="text-slate-400">{iface.ips.join(', ') || '—'}</span>
-          </div>
-        ))}
-      </div>
+      {/* Interfaces with live metrics */}
+      {node.interfaces.length > 0 && (
+        <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 11, lineHeight: 1.7 }}>
+          {node.interfaces.map(iface => {
+            const loading = !(iface.interface in ifaceMetrics)
+            const m       = ifaceMetrics[iface.interface]
+            const cni     = iface.isDefault
+              ? (clusterInfo?.cniPrimary ?? '')
+              : (clusterInfo?.cniSecondary ?? '')
+            return (
+              <div key={iface.interface} className="flex items-center gap-3 py-0.5 flex-wrap">
+                <span style={{ color: iface.isDefault ? '#58a6ff' : '#3fb950', minWidth: 38 }}>
+                  {iface.interface}
+                </span>
+                <span style={{ color: '#f0f6fc', minWidth: 126 }}>
+                  {iface.ips[0] || '—'}
+                </span>
+                {loading ? (
+                  <span style={{ color: '#6b7280' }}>—</span>
+                ) : m ? (
+                  <>
+                    <span>
+                      <span style={{ color: '#c9d1d9' }}>{m.throughputMbps.toFixed(1)}</span>
+                      <span style={{ color: '#6b7280' }}> Mbps</span>
+                    </span>
+                    <span>
+                      <span style={{ color: '#c9d1d9' }}>{Math.round(m.packetsPerSec)}</span>
+                      <span style={{ color: '#6b7280' }}> pkt/s</span>
+                    </span>
+                    <span>
+                      <span style={{ color: '#c9d1d9' }}>{m.dropRate.toFixed(1)}</span>
+                      <span style={{ color: '#6b7280' }}>% drop</span>
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ color: '#6b7280' }}>—</span>
+                )}
+                {cni && <span style={{ color: '#6e7681' }}>{cni}</span>}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -285,7 +316,7 @@ export default function SidePanel({ node, allNodes, onClose, onCaptureEdge: _onC
   useEffect(() => { setIfaceMetrics({}) }, [node.id])
 
   useEffect(() => {
-    if (view !== 'info' || node.interfaces.length === 0) return
+    if (node.interfaces.length === 0) return
     const podName = node.podName
     const ifaces  = node.interfaces
     const fetchAll = () =>
@@ -299,7 +330,7 @@ export default function SidePanel({ node, allNodes, onClose, onCaptureEdge: _onC
     fetchAll()
     const id = setInterval(fetchAll, 10_000)
     return () => clearInterval(id)
-  }, [view, node.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [node.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const addNf = useCallback((n: TopologyNode) => {
     if (tabs.length >= 4) return
@@ -346,58 +377,11 @@ export default function SidePanel({ node, allNodes, onClose, onCaptureEdge: _onC
       </div>
 
       {/* Pod info */}
-      <PodInfo node={node} />
+      <PodInfo node={node} ifaceMetrics={ifaceMetrics} clusterInfo={clusterInfo} />
 
       {view === 'info' ? (
         /* Extended info view */
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-xs">
-
-          {/* Interfaces with live metrics */}
-          {node.interfaces.length > 0 && (
-            <div>
-              <div className="label mb-2">Interfaces</div>
-              <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 11, lineHeight: 1.7 }}>
-                {node.interfaces.map(iface => {
-                  const loading = !(iface.interface in ifaceMetrics)
-                  const m       = ifaceMetrics[iface.interface]
-                  const cni     = iface.isDefault
-                    ? (clusterInfo?.cniPrimary ?? '')
-                    : (clusterInfo?.cniSecondary ?? '')
-                  return (
-                    <div key={iface.interface} className="flex items-center gap-3 py-0.5 flex-wrap">
-                      <span style={{ color: iface.isDefault ? '#58a6ff' : '#3fb950', minWidth: 38 }}>
-                        {iface.interface}
-                      </span>
-                      <span style={{ color: '#f0f6fc', minWidth: 126 }}>
-                        {iface.ips[0] || '—'}
-                      </span>
-                      {loading ? (
-                        <span style={{ color: '#6b7280' }}>—</span>
-                      ) : m ? (
-                        <>
-                          <span>
-                            <span style={{ color: '#c9d1d9' }}>{m.throughputMbps.toFixed(1)}</span>
-                            <span style={{ color: '#6b7280' }}> Mbps</span>
-                          </span>
-                          <span>
-                            <span style={{ color: '#c9d1d9' }}>{Math.round(m.packetsPerSec)}</span>
-                            <span style={{ color: '#6b7280' }}> pkt/s</span>
-                          </span>
-                          <span>
-                            <span style={{ color: '#c9d1d9' }}>{m.dropRate.toFixed(1)}</span>
-                            <span style={{ color: '#6b7280' }}>% drop</span>
-                          </span>
-                        </>
-                      ) : (
-                        <span style={{ color: '#6b7280' }}>—</span>
-                      )}
-                      {cni && <span style={{ color: '#484f58' }}>{cni}</span>}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
 
           <div>
             <div className="label mb-1">Labels</div>
