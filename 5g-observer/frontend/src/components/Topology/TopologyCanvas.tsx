@@ -560,14 +560,14 @@ function condColor(c: string) {
   return 'text-slate-400'
 }
 
-function NodeTipBox({ tip }: { tip: NodeTip }) {
+function NodeTipBox({ tip, onEnter, onLeave }: { tip: NodeTip; onEnter: () => void; onLeave: () => void }) {
   const n = tip.node
   const style: React.CSSProperties = {
     position: 'absolute',
     left: tip.pos.x,
     top: tip.pos.y,
     zIndex: 50,
-    pointerEvents: 'none',
+    pointerEvents: 'auto',
     maxWidth: 280,
     background: '#161b22',
     border: `1px solid ${NODE_BORDER}`,
@@ -575,7 +575,13 @@ function NodeTipBox({ tip }: { tip: NodeTip }) {
     opacity: 1,
   }
   return (
-    <div style={style} className="rounded-lg p-3 text-xs shadow-2xl">
+    <div
+      style={style}
+      className="rounded-lg p-3 text-xs shadow-2xl"
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      onMouseMove={e => e.stopPropagation()}
+    >
       <div className="flex items-center gap-2 mb-1">
         <span className="font-bold text-sm" style={{ color: '#e6edf3' }}>{n.displayName}</span>
         <span className={`font-medium ${condColor(n.status.condition)}`}>● {n.status.condition}</span>
@@ -889,7 +895,7 @@ function TopologyCanvas({
         setNodeTip(nodeTipNext)
       } else {
         clearTimeout(nodeTipTimer.current)
-        nodeTipTimer.current = setTimeout(() => setNodeTip(null), 150)
+        setNodeTip(null)
       }
     }
 
@@ -1036,7 +1042,13 @@ function TopologyCanvas({
         style={{ pointerEvents: 'none', zIndex: 10 }}
       />
 
-      {nodeTip && !dotTip && <NodeTipBox tip={nodeTip} />}
+      {nodeTip && !dotTip && (
+        <NodeTipBox
+          tip={nodeTip}
+          onEnter={() => clearTimeout(nodeTipTimer.current)}
+          onLeave={() => setNodeTip(null)}
+        />
+      )}
       {dotTip && (
         <DotTipBox
           tip={dotTip}
