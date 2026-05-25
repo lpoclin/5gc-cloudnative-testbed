@@ -793,6 +793,11 @@ function TopologyCanvas({
     return () => cancelAnimationFrame(rafRef.current)
   }, [])
 
+  // ── Shared fit logic (used by init, sidePanelOpen effect, and Fit button) ─
+  const fitGraph = useCallback(() => {
+    cyRef.current?.fit(undefined, 60)
+  }, [])
+
   // ── Init Cytoscape ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return
@@ -810,11 +815,7 @@ function TopologyCanvas({
     })
 
     cyRef.current = cy
-    cy.fit(cy.nodes(), 60)
-    const initZ = cy.zoom()
-    if (initZ > 0.9) cy.zoom(0.9)
-    if (initZ < 0.7) cy.zoom(0.7)
-    cy.center()
+    fitGraph()
 
     const onMove = (e: MouseEvent) => {
       const r = containerRef.current?.getBoundingClientRect()
@@ -954,14 +955,10 @@ function TopologyCanvas({
     if (!cy) return
     const t = setTimeout(() => {
       cy.resize()
-      cy.fit(cy.nodes(), 60)
-      const z = cy.zoom()
-      if (z > 0.9) cy.zoom(0.9)
-      if (z < 0.7) cy.zoom(0.7)
-      cy.center()
+      fitGraph()
     }, 100)
     return () => clearTimeout(t)
-  }, [sidePanelOpen])
+  }, [sidePanelOpen, fitGraph])
 
   // ── Reset layout ─────────────────────────────────────────────────────────
   const handleReset = useCallback(() => {
@@ -977,7 +974,7 @@ function TopologyCanvas({
     })
   }, [graph.nodes, storageKey])
 
-  const handleFit = useCallback(() => { cyRef.current?.fit(undefined, 60) }, [])
+  const handleFit = fitGraph
 
   const isULCL = graph.nodes.some(n => n.nfType === 'iUPF')
 
