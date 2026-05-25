@@ -117,12 +117,15 @@ function computePositions(
     place('UPF', 480, BOT_ROW_Y, 130)
   }
 
-  // DN nodes — positioned relative to PSA-UPF1 (index 0) in ULCL, fixed otherwise
+  // DN nodes — right of last (rightmost) PSA-UPF, vertically centered among all PSA-UPFs
   const dns        = nodes.filter(n => n.nfType === 'DN')
   const psasForDn  = groups.get('PSA_UPF') ?? []
-  const psaUPF1Pos = pos.get(psasForDn[0]?.id)
-  const dnBaseX    = psaUPF1Pos ? psaUPF1Pos.x + nodeW * 0.6 : (isULCL ? 860 : 680)
-  const dnY        = psaUPF1Pos ? psaUPF1Pos.y : BOT_ROW_Y
+  const lastPsa    = psasForDn[psasForDn.length - 1]
+  const lastPsaPos = pos.get(lastPsa?.id)
+  const psaSpacingDn = nodeW * 0.6
+  const dnBaseX    = lastPsaPos ? lastPsaPos.x + psaSpacingDn : (isULCL ? 860 : 680)
+  const psaYs      = psasForDn.map(n => pos.get(n.id)?.y ?? BOT_ROW_Y)
+  const dnY        = psaYs.length > 0 ? psaYs.reduce((a, b) => a + b, 0) / psaYs.length : BOT_ROW_Y
   dns.forEach((n, i) => {
     if (pos.has(n.id)) return
     const off = (i - (dns.length - 1) / 2) * 130
