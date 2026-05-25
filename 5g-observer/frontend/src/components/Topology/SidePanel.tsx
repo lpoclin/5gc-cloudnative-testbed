@@ -1,16 +1,18 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import clsx from 'clsx'
 import { useLogs, type LogLevel } from '@/hooks/useLogs'
-import { IconX, IconChevronDown } from '@/components/common/icons'
+import { IconX } from '@/components/common/icons'
 import type { TopologyNode } from '@/types/topology'
 import type { ClusterInfo } from '@/types/k8s'
 import { api } from '@/services/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface NfTab {
+interface NfTabInfo {
+  id: string
   node: TopologyNode
+  view: 'logs' | 'info'
 }
 
 interface Props {
@@ -18,6 +20,10 @@ interface Props {
   allNodes: TopologyNode[]
   onClose: () => void
   onCaptureEdge?: (nodeId: string, iface: string) => void
+  tabs: NfTabInfo[]
+  activeTabId: string | null
+  onTabSelect: (id: string) => void
+  onTabClose: (id: string) => void
 }
 
 interface IfaceMeta { throughputMbps: number; packetsPerSec: number; dropRate: number }
@@ -336,15 +342,8 @@ function PodInfo({ node, ifaceMetrics, clusterInfo }: {
 }
 
 // ─── Main SidePanel ───────────────────────────────────────────────────────────
-export default function SidePanel({ node, allNodes, onClose, onCaptureEdge: _onCaptureEdge }: Props) {
+export default function SidePanel({ node, allNodes: _allNodes, onClose, onCaptureEdge: _onCaptureEdge, tabs, activeTabId, onTabSelect, onTabClose }: Props) {
   const [view, setView] = useState<'logs' | 'info'>('logs')
-  const [tabs, setTabs] = useState<NfTab[]>([{ node }])
-  const [addOpen, setAddOpen] = useState(false)
-
-  // When primary node changes, reset tabs
-  useEffect(() => {
-    setTabs([{ node }])
-  }, [node.id, node])
 
   // ── Interface metrics ──────────────────────────────────────────────────────
   const [ifaceMetrics, setIfaceMetrics] = useState<MetricsMap>({})
@@ -374,26 +373,6 @@ export default function SidePanel({ node, allNodes, onClose, onCaptureEdge: _onC
     return () => clearInterval(id)
   }, [node.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const addNf = useCallback((n: TopologyNode) => {
-    if (tabs.length >= 4) return
-    if (tabs.some(t => t.node.id === n.id)) return
-    setTabs(prev => [...prev, { node: n }])
-    setAddOpen(false)
-  }, [tabs])
-
-  const removeNf = useCallback((id: string) => {
-    setTabs(prev => {
-      const next = prev.filter(t => t.node.id !== id)
-      return next.length > 0 ? next : prev
-    })
-  }, [])
-
-  // Available NFs to add (not already in tabs)
-  const available = useMemo(
-    () => allNodes.filter(n => !tabs.some(t => t.node.id === n.id)),
-    [allNodes, tabs],
-  )
-
   return (
     <div className="flex flex-col h-full bg-bg-card border-l border-border animate-slide-in-right">
       {/* Panel header */}
@@ -418,13 +397,42 @@ export default function SidePanel({ node, allNodes, onClose, onCaptureEdge: _onC
         </button>
       </div>
 
+      {/* Tab bar */}
+      <div className="flex items-center border-b border-[#30363d] shrink-0 overflow-x-auto" style={{ background: '#161b22' }}>
+        {tabs.map(t => (
+          <div
+            key={t.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => onTabSelect(t.id)}
+            onKeyDown={e => e.key === 'Enter' && onTabSelect(t.id)}
+            className="group relative flex items-center gap-1.5 px-3 py-2 cursor-pointer border-r border-[#30363d] shrink-0"
+            style={{
+              background: t.id === activeTabId ? '#1e3a5f' : undefined,
+              borderBottom: `2px solid ${t.id === activeTabId ? '#58a6ff' : 'transparent'}`,
+              color: t.id === activeTabId ? '#f0f6fc' : '#8b949e',
+            }}
+            onMouseEnter={e => { if (t.id !== activeTabId) (e.currentTarget as HTMLElement).style.background = '#1c2128' }}
+            onMouseLeave={e => { if (t.id !== activeTabId) (e.currentTarget as HTMLElement).style.background = '' }}
+          >
+            <span className="text-xs font-mono whitespace-nowrap">{t.node.displayName}</span>
+            <button
+              onClick={e => { e.stopPropagation(); onTabClose(t.id) }}
+              tabIndex={-1}
+              className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 text-[#8b949e] hover:text-[#ef4444]"
+            >
+              <IconX className="w-2.5 h-2.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+
       {/* Pod info */}
       <PodInfo node={node} ifaceMetrics={ifaceMetrics} clusterInfo={clusterInfo} />
 
       {view === 'info' ? (
         /* Extended info view */
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-xs">
-
           <div>
             <div className="label mb-1">Labels</div>
             {Object.entries(node.labels).map(([k, v]) => (
@@ -437,62 +445,9 @@ export default function SidePanel({ node, allNodes, onClose, onCaptureEdge: _onC
           </div>
         </div>
       ) : (
-        /* Logs view: multi-NF column layout */
+        /* Logs view: single column for active tab */
         <div className="flex flex-col flex-1 min-h-0">
-          {/* NF tabs bar */}
-          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border bg-bg-tertiary shrink-0 overflow-x-auto">
-            <span className="text-[10px] text-slate-600 shrink-0 mr-1">NF:</span>
-            {tabs.map(t => (
-              <span
-                key={t.node.id}
-                className={clsx(
-                  'flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border',
-                  t.node.id === node.id
-                    ? 'border-blue-600/50 text-blue-400 bg-blue-600/10'
-                    : 'border-border text-slate-400',
-                )}
-              >
-                {t.node.displayName}
-              </span>
-            ))}
-
-            {/* Add NF button */}
-            {available.length > 0 && tabs.length < 4 && (
-              <div className="relative">
-                <button
-                  onClick={() => setAddOpen(v => !v)}
-                  className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border border-dashed border-slate-600 text-slate-500 hover:text-slate-300 hover:border-slate-400"
-                >
-                  + <IconChevronDown className="w-2.5 h-2.5" />
-                </button>
-                {addOpen && (
-                  <div className="absolute top-full left-0 mt-1 z-30 bg-bg-secondary border border-border rounded shadow-xl min-w-max">
-                    {available.map(n => (
-                      <button
-                        key={n.id}
-                        onClick={() => addNf(n)}
-                        className="block w-full text-left px-3 py-1.5 text-xs font-mono text-slate-300 hover:bg-bg-hover"
-                      >
-                        <span className="text-blue-400">{n.displayName}</span>{' '}
-                        <span className="text-slate-500">{n.podName}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Log columns */}
-          <div className="flex flex-1 min-h-0 overflow-hidden">
-            {tabs.map(t => (
-              <NfLogColumn
-                key={t.node.id}
-                node={t.node}
-                onRemove={() => removeNf(t.node.id)}
-              />
-            ))}
-          </div>
+          <NfLogColumn key={node.id} node={node} onRemove={() => onTabClose(node.id)} />
         </div>
       )}
     </div>

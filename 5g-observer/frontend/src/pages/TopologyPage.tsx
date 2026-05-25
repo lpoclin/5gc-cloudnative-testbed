@@ -11,6 +11,12 @@ import type { TopologyNode, TopologyEdge } from '@/types/topology'
 // multi-namespace support planned for v0.2
 const namespace = 'free5gc'
 
+interface NfTab {
+  id: string
+  node: TopologyNode
+  view: 'logs' | 'info'
+}
+
 const SIDE_MIN = 400
 const SIDE_MAX = 1600
 const SIDE_DEFAULT = 800
@@ -36,7 +42,8 @@ function getSaved(key: string, def: number): number {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TopologyPage() {
-  const [selectedNode, setSelectedNode] = useState<TopologyNode | null>(null)
+  const [nfTabs, setNfTabs] = useState<NfTab[]>([])
+  const [activeNfTabId, setActiveNfTabId] = useState<string | null>(null)
   const [sidePanelOpen, setSidePanelOpen] = useState(false)
   const [termOpen, setTermOpen]       = useState(true)
   const [sideWidth,   setSideWidth]   = useState(() => getSaved('5g-observer-sidepanel-width', SIDE_DEFAULT))
@@ -111,11 +118,28 @@ export default function TopologyPage() {
 
   const { data: graph, isLoading, isError, refetch } = useTopology(namespace)
 
-  const handleNodeClick = useCallback((node: TopologyNode) => {
-    setSelectedNode(node)
-    setSidePanelOpen(true)
-    setSideWidth(800)
-  }, [])
+  const handleNodeClick = useCallback((clickedNode: TopologyNode) => {
+    const existing = nfTabs.find(t => t.id === clickedNode.id)
+    if (existing) {
+      setActiveNfTabId(clickedNode.id)
+    } else {
+      setNfTabs(prev => [...prev, { id: clickedNode.id, node: clickedNode, view: 'logs' }])
+      setActiveNfTabId(clickedNode.id)
+      setSidePanelOpen(true)
+      setSideWidth(800)
+    }
+  }, [nfTabs])
+
+  const handleTabClose = useCallback((closedId: string) => {
+    const remaining = nfTabs.filter(t => t.id !== closedId)
+    setNfTabs(remaining)
+    if (remaining.length === 0) {
+      setSidePanelOpen(false)
+      setActiveNfTabId(null)
+    } else if (activeNfTabId === closedId) {
+      setActiveNfTabId(remaining[remaining.length - 1].id)
+    }
+  }, [nfTabs, activeNfTabId])
 
   const handleEdgeClick = useCallback((edge: TopologyEdge, sourceNode: TopologyNode) => {
     push('info', `${edge.label || edge.interface}: ${sourceNode.displayName} → capture coming soon`)
@@ -123,8 +147,11 @@ export default function TopologyPage() {
 
   const handleClosePanel = useCallback(() => {
     setSidePanelOpen(false)
-    setSelectedNode(null)
+    setNfTabs([])
+    setActiveNfTabId(null)
   }, [])
+
+  const activeNode = nfTabs.find(t => t.id === activeNfTabId)?.node ?? null
 
   const liveIndicator = !isLoading && !isError && !!graph
 
@@ -193,7 +220,7 @@ export default function TopologyPage() {
               graph={graph}
               onNodeClick={handleNodeClick}
               onEdgeClick={handleEdgeClick}
-              selectedNodeId={selectedNode?.id}
+              selectedNodeId={activeNfTabId ?? undefined}
               namespace={namespace}
               sidePanelOpen={sidePanelOpen}
             />
@@ -216,18 +243,18 @@ export default function TopologyPage() {
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#30363d' }}
             />
             <div className="flex-1 min-w-0 h-full overflow-hidden">
-              {selectedNode ? (
+              {activeNode ? (
                 <SidePanel
-                  node={selectedNode}
+                  node={activeNode}
                   allNodes={graph.nodes}
                   onClose={handleClosePanel}
+                  tabs={nfTabs}
+                  activeTabId={activeNfTabId}
+                  onTabSelect={(id) => setActiveNfTabId(id)}
+                  onTabClose={handleTabClose}
                 />
               ) : (
-                <div
-                  className="flex flex-col h-full"
-                  style={{ background: '#0d1117' }}
-                >
-                  {/* Header matching SidePanel style */}
+                <div className="flex flex-col h-full" style={{ background: '#0d1117' }}>
                   <div className="flex items-center gap-2 px-3 py-2 shrink-0"
                     style={{ background: '#161b22', borderBottom: '1px solid #30363d' }}>
                     <span className="text-sm font-semibold flex-1" style={{ color: '#e6edf3' }}>NF Detail</span>
