@@ -634,7 +634,7 @@ function NodeTipBox({ tip, onEnter, onLeave }: { tip: NodeTip; onEnter: () => vo
 interface IfaceMetrics { throughputMbps: number; packetsPerSec: number; dropRate: number }
 
 function DotTipBox({
-  tip, onCapture, onEnter, onLeave, metrics, metricsLoading,
+  tip, onCapture, onEnter, onLeave, metrics, metricsLoading, locked, onClose,
 }: {
   tip: DotTip
   onCapture: () => void
@@ -642,6 +642,8 @@ function DotTipBox({
   onLeave: () => void
   metrics?: IfaceMetrics | null
   metricsLoading: boolean
+  locked: boolean
+  onClose: () => void
 }) {
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -650,7 +652,7 @@ function DotTipBox({
     zIndex: 50,
     maxWidth: 260,
     background: '#161b22',
-    border: `1px solid ${NODE_BORDER}`,
+    border: `1px solid ${locked ? SIGNAL_CLR : NODE_BORDER}`,
     pointerEvents: 'auto',
   }
   return (
@@ -660,7 +662,18 @@ function DotTipBox({
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
-      <div className="font-bold mb-0.5" style={{ color: '#e6edf3' }}>
+      {locked && (
+        <button
+          onClick={onClose}
+          style={{
+            position: 'absolute', top: 4, right: 4,
+            background: 'none', border: 'none', color: MUTED,
+            cursor: 'pointer', padding: '2px 5px', lineHeight: 1, fontSize: 14,
+          }}
+          title="Close"
+        >✕</button>
+      )}
+      <div className="font-bold mb-0.5" style={{ color: '#e6edf3', paddingRight: locked ? 20 : 0 }}>
         {tip.node.displayName} : {tip.iface}
       </div>
       <div className="font-mono mb-1" style={{ color: MUTED }}>
@@ -668,22 +681,16 @@ function DotTipBox({
       </div>
       <div className="mb-1.5" style={{ color: MUTED }}>CNI: {cni(tip.iface)}</div>
 
-      {/* Interface metrics */}
-      {metricsLoading ? (
+      {/* Interface metrics — always show all three rows */}
+      {metricsLoading && !metrics ? (
         <div className="text-[10px] mb-1.5 animate-pulse" style={{ color: MUTED }}>Loading metrics…</div>
-      ) : metrics && (metrics.throughputMbps > 0 || metrics.packetsPerSec > 0) ? (
+      ) : (
         <div className="space-y-0.5 mb-1.5 text-[10px]" style={{ color: MUTED }}>
-          {metrics.throughputMbps > 0 && (
-            <div>Throughput: <strong style={{ color: '#e6edf3' }}>{metrics.throughputMbps.toFixed(2)} Mbps</strong></div>
-          )}
-          {metrics.packetsPerSec > 0 && (
-            <div>Packets/s: <strong style={{ color: '#e6edf3' }}>{metrics.packetsPerSec.toFixed(0)} pkt/s</strong></div>
-          )}
-          {metrics.dropRate > 0 && (
-            <div>Drop rate: <strong style={{ color: BADGE_WARN }}>{metrics.dropRate.toFixed(2)}%</strong></div>
-          )}
+          <div>Throughput: <strong style={{ color: '#e6edf3' }}>{(metrics?.throughputMbps ?? 0).toFixed(2)} Mbps</strong></div>
+          <div>Packets/s:  <strong style={{ color: '#e6edf3' }}>{(metrics?.packetsPerSec ?? 0).toFixed(2)} pkt/s</strong></div>
+          <div>Drop:       <strong style={{ color: metrics && metrics.dropRate > 0 ? BADGE_WARN : '#e6edf3' }}>{(metrics?.dropRate ?? 0).toFixed(2)}%</strong></div>
         </div>
-      ) : null}
+      )}
 
       <button
         onClick={onCapture}
@@ -715,6 +722,7 @@ function TopologyCanvas({
   const nodeTipTimer   = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const dotHideTimer   = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const metricsTimer   = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const dotLockedRef   = useRef(false)
   const trafficRef     = useRef(trafficEdgeIds ?? new Set<string>())
   const sbiLabelsRef   = useRef(new Map<string, string>())
   const nodeMapRef     = useRef(new Map<string, TopologyNode>())
@@ -723,6 +731,7 @@ function TopologyCanvas({
 
   const [nodeTip,       setNodeTip]       = useState<NodeTip | null>(null)
   const [dotTip,        setDotTip]        = useState<DotTip | null>(null)
+  const [dotLocked,     setDotLocked]     = useState(false)
   const [dotMetrics,    setDotMetrics]    = useState<IfaceMetrics | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(false)
 
@@ -746,7 +755,7 @@ function TopologyCanvas({
   const dotPodName = dotTip?.node.podName ?? null
   const dotIface   = dotTip?.iface ?? null
 
-  // ── Interface metrics fetch (refreshed every 5s while tooltip is visible) ──
+  // ── Interface metrics fetch (refreshed every 1s while tooltip is visible) ──
   useEffect(() => {
     clearInterval(metricsTimer.current)
     setDotMetrics(null)
@@ -757,10 +766,10 @@ function TopologyCanvas({
       fetch(`/api/metrics/interface?pod=${encodeURIComponent(dotPodName)}&interface=${encodeURIComponent(dotIface)}`)
         .then(r => r.json() as Promise<IfaceMetrics>)
         .then(m => { setDotMetrics(m); setMetricsLoading(false) })
-        .catch(() => { setDotMetrics(null); setMetricsLoading(false) })
+        .catch(() => setMetricsLoading(false))
     }
     fetchM()
-    metricsTimer.current = setInterval(fetchM, 5_000)
+    metricsTimer.current = setInterval(fetchM, 1_000)
     return () => clearInterval(metricsTimer.current)
   }, [dotPodName, dotIface])
 
@@ -855,6 +864,8 @@ function TopologyCanvas({
       const r = containerRef.current?.getBoundingClientRect()
       if (r) mousePos.current = { x: e.clientX - r.left, y: e.clientY - r.top }
 
+      if (dotLockedRef.current) return
+
       const mx = mousePos.current.x
       const my = mousePos.current.y
       // Read actual canvas width — excludes side panel (CSS flex already accounts for it)
@@ -925,10 +936,19 @@ function TopologyCanvas({
       if (!r) return
       const mx = e.clientX - r.left
       const my = e.clientY - r.top
+      const cw = containerRef.current?.clientWidth  ?? window.innerWidth
+      const ch = containerRef.current?.clientHeight ?? window.innerHeight
       for (const d of dotsRef.current) {
         const dx = mx - d.x, dy = my - d.y
         if (Math.sqrt(dx * dx + dy * dy) < 8) {
-          navigate(`/captures?pod=${d.node.podName}&interface=${d.iface}`)
+          const pos = {
+            x: Math.min(d.x + 15, cw - 268),
+            y: Math.max(4, Math.min(d.y - 10, ch - 168)),
+          }
+          clearTimeout(dotHideTimer.current)
+          setDotTip({ node: d.node, iface: d.iface, pos })
+          setDotLocked(true)
+          dotLockedRef.current = true
           return
         }
       }
@@ -1075,9 +1095,11 @@ function TopologyCanvas({
           tip={dotTip}
           onCapture={() => handleCapture(dotTip)}
           onEnter={() => clearTimeout(dotHideTimer.current)}
-          onLeave={() => setDotTip(null)}
+          onLeave={() => { if (!dotLocked) setDotTip(null) }}
           metrics={dotMetrics}
           metricsLoading={metricsLoading}
+          locked={dotLocked}
+          onClose={() => { setDotLocked(false); dotLockedRef.current = false; setDotTip(null) }}
         />
       )}
 
