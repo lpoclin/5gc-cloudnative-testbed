@@ -35,6 +35,7 @@ func NewRingBuffer(capacity int) *RingBuffer {
 func (r *RingBuffer) Push(pkt RawPacket) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.buf[r.head].Raw = nil // release old raw bytes before overwrite
 	r.buf[r.head] = pkt
 	r.head = (r.head + 1) % r.cap
 	if r.size < r.cap {

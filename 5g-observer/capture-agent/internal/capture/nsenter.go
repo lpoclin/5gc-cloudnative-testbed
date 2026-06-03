@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 )
@@ -163,10 +164,13 @@ func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan 
 		tshark.Stdin = teeR
 
 		rawCh := make(chan []byte, 512)
+		var rawChOnce sync.Once
+		closeRawCh := func() { rawChOnce.Do(func() { close(rawCh) }) }
+
 		go func() {
-			defer close(rawCh)
+			defer closeRawCh()
 			defer pcapPipeR.Close()
-			parsePcapFrames(pcapPipeR, rawCh)
+			parsePcapFrames(ctx, pcapPipeR, rawCh)
 		}()
 
 		if err := tcpdump.Start(); err != nil {
@@ -184,7 +188,8 @@ func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan 
 		defer func() {
 			tcpdump.Process.Kill()
 			tshark.Process.Kill()
-			pcapPipeW.Close() // unblocks parsePcapFrames
+			pcapPipeW.Close()
+			closeRawCh() // Fix 2: ensure rawCh is closed when main goroutine exits
 			tcpdump.Wait()
 			tshark.Wait()
 		}()
@@ -262,7 +267,7 @@ func epochStringToNs(epochStr string) int64 {
 // parsePcapFrames reads a libpcap byte stream and sends raw packet bytes for
 // each frame on rawCh.  Called in a goroutine alongside the tshark text parser;
 // frames appear in the same sequential order as tshark output lines.
-func parsePcapFrames(r io.Reader, rawCh chan<- []byte) {
+func parsePcapFrames(ctx context.Context, r io.Reader, rawCh chan<- []byte) {
 	log.Debug().Msg("parsePcapFrames: starting")
 
 	// pcap global header: 24 bytes
@@ -312,7 +317,11 @@ func parsePcapFrames(r io.Reader, rawCh chan<- []byte) {
 		if frameCount <= 3 || frameCount%1000 == 0 {
 			log.Debug().Int("frame", frameCount).Int("len", len(data)).Msg("parsePcapFrames: frame read")
 		}
-		rawCh <- data
+		select {
+		case rawCh <- data:
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
