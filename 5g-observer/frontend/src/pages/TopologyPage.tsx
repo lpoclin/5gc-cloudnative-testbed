@@ -8,9 +8,6 @@ import { IconRefresh } from '@/components/common/icons'
 import { useTopology } from '@/hooks/useTopology'
 import type { TopologyNode, TopologyEdge } from '@/types/topology'
 
-// multi-namespace support planned for v0.2
-const namespace = 'free5gc'
-
 interface NfTab {
   id: string
   node: TopologyNode
@@ -116,7 +113,14 @@ export default function TopologyPage() {
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [])
 
-  const { data: graph, isLoading, isError, refetch } = useTopology(namespace)
+  const { data: graph, isLoading, isError, refetch } = useTopology()
+
+  // Namespace display — derived from the API response, display-only.
+  const displayNS   = graph?.namespaces ?? []
+  const nsHeading   = displayNS.length > 1 ? 'Namespaces' : 'Namespace'
+  const nsDisplay   = displayNS.length > 0 ? displayNS.join(' · ') : '—'
+  // First namespace used for the TopologyCanvas localStorage position key.
+  const canvasNS    = displayNS[0] ?? ''
 
   const handleNodeClick = useCallback((clickedNode: TopologyNode) => {
     setNfTabs(prev => {
@@ -161,12 +165,12 @@ export default function TopologyPage() {
         className="flex items-center gap-3 px-4 py-2 shrink-0"
         style={{ borderBottom: '1px solid #30363d', background: '#161b22' }}
       >
-        <span className="text-xs shrink-0" style={{ color: '#8b949e' }}>Namespace</span>
+        <span className="text-xs shrink-0" style={{ color: '#8b949e' }}>{nsHeading}</span>
         <span
           className="rounded px-2 py-1 text-sm font-mono"
           style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }}
         >
-          {namespace}
+          {nsDisplay}
         </span>
 
         <div className="flex-1" />
@@ -228,7 +232,7 @@ export default function TopologyPage() {
           ) : !graph || graph.nodes.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-2" style={{ color: '#8b949e' }}>
               <span className="text-4xl opacity-30">⬡</span>
-              <span>No NFs found in <strong style={{ color: '#e6edf3' }}>{namespace}</strong></span>
+              <span>No NFs found in <strong style={{ color: '#e6edf3' }}>{nsDisplay}</strong></span>
               <span className="text-xs">Waiting for pods to come online…</span>
             </div>
           ) : (
@@ -237,7 +241,7 @@ export default function TopologyPage() {
               onNodeClick={handleNodeClick}
               onEdgeClick={handleEdgeClick}
               selectedNodeId={activeNfTabId ?? undefined}
-              namespace={namespace}
+              namespace={canvasNS}
               sidePanelOpen={sidePanelOpen}
             />
           )}

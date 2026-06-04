@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,6 +39,14 @@ func main() {
 	lokiURL := envOr("LOKI_URL", "http://loki-gateway.loki")
 	promURL := envOr("PROMETHEUS_URL", "http://kube-prometheus-stack-prometheus.monitoring:9090")
 
+	targetNS := envOr("TARGET_NAMESPACES", "")
+	var targetNamespaces []string
+	for _, ns := range strings.Split(targetNS, ",") {
+		if ns = strings.TrimSpace(ns); ns != "" {
+			targetNamespaces = append(targetNamespaces, ns)
+		}
+	}
+
 	lokiClient := loki.NewClient(lokiURL)
 	promClient := prometheus.NewClient(promURL)
 
@@ -67,7 +76,7 @@ func main() {
 		}
 	}()
 
-	topoH    := handlers.NewTopologyHandler(k8sClient)
+	topoH    := handlers.NewTopologyHandler(k8sClient, targetNamespaces)
 	logsH    := handlers.NewLogsHandler(lokiClient)
 	metH     := handlers.NewMetricsHandler(promClient, captureServer)
 	infraH   := handlers.NewInfraHandler(k8sClient, promClient)

@@ -20,8 +20,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   topology: {
-    get: (namespace: string) =>
-      request<TopologyGraph>(`/api/topology?namespace=${encodeURIComponent(namespace)}`),
+    get: (namespace?: string) =>
+      request<TopologyGraph>(namespace ? `/api/topology?namespace=${encodeURIComponent(namespace)}` : '/api/topology'),
     namespaces: () => request<string[]>('/api/namespaces'),
   },
   pods: {

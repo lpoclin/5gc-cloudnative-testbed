@@ -56,6 +56,7 @@ export interface TopologyGraph {
   nodes: TopologyNode[]
   edges: TopologyEdge[]
   updatedAt: string
+  namespaces?: string[]
 }
 
 // Position hints per NF type for the preset layout

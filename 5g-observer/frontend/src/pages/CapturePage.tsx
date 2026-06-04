@@ -1200,7 +1200,7 @@ export default function CapturePage({
 
   const { data: nodes = [] } = useQuery({
     queryKey: ['topology-nodes-any'],
-    queryFn:  () => api.topology.get('free5gc').then(g => g.nodes),
+    queryFn:  () => api.topology.get().then(g => g.nodes),
     staleTime: 30_000,
   })
 

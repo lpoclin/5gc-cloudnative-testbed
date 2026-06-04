@@ -109,9 +109,10 @@ type TopologyEdge struct {
 }
 
 type TopologyGraph struct {
-	Nodes     []TopologyNode `json:"nodes"`
-	Edges     []TopologyEdge `json:"edges"`
-	UpdatedAt time.Time      `json:"updatedAt"`
+	Nodes      []TopologyNode `json:"nodes"`
+	Edges      []TopologyEdge `json:"edges"`
+	UpdatedAt  time.Time      `json:"updatedAt"`
+	Namespaces []string       `json:"namespaces"`
 }
 
 // ─── Network-status annotation types ─────────────────────────────────────────
@@ -440,6 +441,7 @@ func buildDNNodes(nodes []TopologyNode, entries []upfDNNEntry) ([]TopologyNode, 
 
 func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []string) (*TopologyGraph, error) {
 	var nodes []TopologyNode
+	nsSet := make(map[string]bool)
 
 	for _, ns := range namespaces {
 		pods, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
@@ -450,7 +452,16 @@ func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []s
 			node := podToNode(&pod)
 			if node != nil {
 				nodes = append(nodes, *node)
+				nsSet[ns] = true
 			}
+		}
+	}
+
+	// Preserve input order; include only namespaces that had at least one NF pod.
+	var foundNS []string
+	for _, ns := range namespaces {
+		if nsSet[ns] {
+			foundNS = append(foundNS, ns)
 		}
 	}
 
@@ -465,9 +476,10 @@ func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []s
 	edges := buildEdges(nodes, upfNodeDNNs, dnByDNN)
 
 	return &TopologyGraph{
-		Nodes:     nodes,
-		Edges:     edges,
-		UpdatedAt: time.Now(),
+		Nodes:      nodes,
+		Edges:      edges,
+		UpdatedAt:  time.Now(),
+		Namespaces: foundNS,
 	}, nil
 }
 

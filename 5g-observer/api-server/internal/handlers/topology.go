@@ -9,6 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
 	k8stopo "github.com/lpoclin/5g-observer/api-server/internal/k8s"
@@ -21,20 +23,102 @@ var upgrader = websocket.Upgrader{
 }
 
 type TopologyHandler struct {
-	cs *kubernetes.Clientset
+	cs               *kubernetes.Clientset
+	targetNamespaces []string
 }
 
-func NewTopologyHandler(cs *kubernetes.Clientset) *TopologyHandler {
-	return &TopologyHandler{cs: cs}
+func NewTopologyHandler(cs *kubernetes.Clientset, targetNamespaces []string) *TopologyHandler {
+	return &TopologyHandler{cs: cs, targetNamespaces: targetNamespaces}
+}
+
+var systemNamespaces = map[string]bool{
+	"kube-system": true, "kube-public": true, "kube-node-lease": true,
+	"monitoring": true, "longhorn-system": true, "cert-manager": true,
+	"loki": true, "observer": true,
+}
+
+var nfKeywords = []string{
+	"amf", "smf", "upf", "nrf", "ausf", "udm", "udr",
+	"pcf", "nssf", "chf", "nef", "gnb", "n3iwf", "nwdaf", "scp", "sepp",
+}
+
+var infraKeywords = []string{"mongodb", "mysql", "postgres", "redis", "etcd"}
+
+func isPodNF(pod *corev1.Pod) bool {
+	if nfVal, ok := pod.Labels["nf"]; ok {
+		return strings.ToLower(nfVal) != "webui"
+	}
+	if comp, ok := pod.Labels["component"]; ok {
+		c := strings.ToLower(comp)
+		if c == "gnb" || c == "ue" {
+			return true
+		}
+	}
+	name := strings.ToLower(pod.Name)
+	for _, kw := range infraKeywords {
+		if strings.Contains(name, kw) {
+			return false
+		}
+	}
+	for _, kw := range nfKeywords {
+		if strings.Contains(name, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveNamespaces returns the namespaces to query for topology.
+// Priority 1: TARGET_NAMESPACES env var (already parsed into h.targetNamespaces).
+// Priority 2: auto-detect by scanning non-system namespaces for 5G NF pods.
+// Last resort: ["free5gc"].
+func (h *TopologyHandler) resolveNamespaces(ctx context.Context) []string {
+	if len(h.targetNamespaces) > 0 {
+		return h.targetNamespaces
+	}
+
+	nsList, err := h.cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		log.Warn().Err(err).Msg("resolveNamespaces: cannot list namespaces, using fallback")
+		return []string{"free5gc"}
+	}
+
+	var result []string
+	for _, ns := range nsList.Items {
+		if systemNamespaces[ns.Name] {
+			continue
+		}
+		pods, err := h.cs.CoreV1().Pods(ns.Name).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			continue
+		}
+		for i := range pods.Items {
+			if isPodNF(&pods.Items[i]) {
+				result = append(result, ns.Name)
+				break
+			}
+		}
+	}
+
+	if len(result) == 0 {
+		return []string{"free5gc"}
+	}
+	return result
+}
+
+// namespaceFromQuery resolves the namespace list for a request.
+// If ?namespace=X is provided it takes priority (backward compatibility).
+// Otherwise resolveNamespaces() is used.
+func (h *TopologyHandler) namespaceFromQuery(c *gin.Context) []string {
+	if ns := c.Query("namespace"); ns != "" {
+		return strings.Split(ns, ",")
+	}
+	return h.resolveNamespaces(c.Request.Context())
 }
 
 // GET /api/topology?namespace=free5gc[,other]
 func (h *TopologyHandler) GetTopology(c *gin.Context) {
-	ns := c.Query("namespace")
-	if ns == "" {
-		ns = "free5gc"
-	}
-	namespaces := strings.Split(ns, ",")
+	namespaces := h.namespaceFromQuery(c)
 
 	graph, err := k8stopo.BuildTopology(c.Request.Context(), h.cs, namespaces)
 	if err != nil {
@@ -91,11 +175,7 @@ func (h *TopologyHandler) GetPodInterfaces(c *gin.Context) {
 
 // GET /ws/topology?namespace=free5gc  — push updates every 5s
 func (h *TopologyHandler) WatchTopology(c *gin.Context) {
-	ns := c.Query("namespace")
-	if ns == "" {
-		ns = "free5gc"
-	}
-	namespaces := strings.Split(ns, ",")
+	namespaces := h.namespaceFromQuery(c)
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
