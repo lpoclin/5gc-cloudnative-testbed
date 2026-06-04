@@ -58,6 +58,7 @@ export interface TopologyGraph {
   updatedAt: string
   namespaces?: string[]
   primaryCNI?: string
+  secondaryCNI?: string
 }
 
 // Position hints per NF type for the preset layout

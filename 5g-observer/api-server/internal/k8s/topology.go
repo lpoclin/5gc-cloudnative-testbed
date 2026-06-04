@@ -110,11 +110,12 @@ type TopologyEdge struct {
 }
 
 type TopologyGraph struct {
-	Nodes      []TopologyNode `json:"nodes"`
-	Edges      []TopologyEdge `json:"edges"`
-	UpdatedAt  time.Time      `json:"updatedAt"`
-	Namespaces []string       `json:"namespaces"`
-	PrimaryCNI string         `json:"primaryCNI"`
+	Nodes        []TopologyNode `json:"nodes"`
+	Edges        []TopologyEdge `json:"edges"`
+	UpdatedAt    time.Time      `json:"updatedAt"`
+	Namespaces   []string       `json:"namespaces"`
+	PrimaryCNI   string         `json:"primaryCNI"`
+	SecondaryCNI string         `json:"secondaryCNI"`
 }
 
 // ─── Network-status annotation types ─────────────────────────────────────────
@@ -497,6 +498,62 @@ func detectPrimaryCNI(ctx context.Context, cs *kubernetes.Clientset) string {
 	return result
 }
 
+// ─── Secondary CNI detection ─────────────────────────────────────────────────
+
+var secondaryCNICache struct {
+	mu        sync.Mutex
+	value     string
+	fetchedAt time.Time
+}
+
+func detectSecondaryCNI(ctx context.Context, cs *kubernetes.Clientset) string {
+	secondaryCNICache.mu.Lock()
+	if secondaryCNICache.value != "" && time.Since(secondaryCNICache.fetchedAt) < cniCacheTTL {
+		v := secondaryCNICache.value
+		secondaryCNICache.mu.Unlock()
+		return v
+	}
+	secondaryCNICache.mu.Unlock()
+
+	pods, err := cs.CoreV1().Pods("kube-system").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return "Secondary CNI"
+	}
+
+	result := "Secondary CNI"
+	for _, pod := range pods.Items {
+		labels := pod.Labels
+		name := strings.ToLower(pod.Name)
+		if labels["app"] == "multus" || strings.Contains(name, "multus") {
+			result = "Multus"
+			break
+		}
+		if labels["app"] == "danm" || strings.Contains(name, "danm") {
+			result = "DANM"
+			break
+		}
+		if labels["app"] == "knitter" || strings.Contains(name, "knitter") {
+			result = "Knitter"
+			break
+		}
+		if labels["app"] == "cni-genie" || strings.Contains(name, "genie") {
+			result = "CNI-Genie"
+			break
+		}
+		if labels["app"] == "whereabouts" || strings.Contains(name, "whereabouts") {
+			result = "Whereabouts"
+			break
+		}
+	}
+
+	secondaryCNICache.mu.Lock()
+	secondaryCNICache.value = result
+	secondaryCNICache.fetchedAt = time.Now()
+	secondaryCNICache.mu.Unlock()
+
+	return result
+}
+
 // ─── Topology discovery ───────────────────────────────────────────────────────
 
 func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []string) (*TopologyGraph, error) {
@@ -535,13 +592,15 @@ func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []s
 
 	edges := buildEdges(nodes, upfNodeDNNs, dnByDNN)
 	primaryCNI := detectPrimaryCNI(ctx, cs)
+	secondaryCNI := detectSecondaryCNI(ctx, cs)
 
 	return &TopologyGraph{
-		Nodes:      nodes,
-		Edges:      edges,
-		UpdatedAt:  time.Now(),
-		Namespaces: foundNS,
-		PrimaryCNI: primaryCNI,
+		Nodes:        nodes,
+		Edges:        edges,
+		UpdatedAt:    time.Now(),
+		Namespaces:   foundNS,
+		PrimaryCNI:   primaryCNI,
+		SecondaryCNI: secondaryCNI,
 	}, nil
 }
 

@@ -160,13 +160,16 @@ function eStyle(iface: string): { lineColor: string; lineStyle: 'solid' | 'dashe
   }
 }
 
-function getCNILabel(ifaceObj: NetworkInterface | undefined, primaryCNI: string): string {
+function getCNILabel(ifaceObj: NetworkInterface | undefined, primaryCNI: string, secondaryCNI: string): string {
   if (!ifaceObj) return ''
   if (ifaceObj.isDefault) return primaryCNI
-  if (ifaceObj.name) return 'Multus'
-  const ifName = ifaceObj.interface.toLowerCase()
-  if (ifName === 'upfgtp' || ifName.startsWith('gtp')) return 'kernel / gtp5g'
-  if (ifName === 'uesimtun0' || ifName.startsWith('tun')) return 'TUN'
+  if (ifaceObj.name && ifaceObj.name !== '') return secondaryCNI
+  const n = ifaceObj.interface.toLowerCase()
+  if (n.includes('gtp'))                           return 'GTP'
+  if (n.includes('tun'))                           return 'TUN'
+  if (n.startsWith('dpdk'))                        return 'DPDK'
+  if (n.startsWith('xdp') || n.startsWith('bpf'))  return 'eBPF/XDP'
+  if (n.startsWith('veth'))                        return 'veth'
   return ''
 }
 
@@ -636,7 +639,7 @@ function NodeTipBox({ tip, onEnter, onLeave }: { tip: NodeTip; onEnter: () => vo
 interface IfaceMetrics { throughputMbps: number; packetsPerSec: number; dropRate: number }
 
 function DotTipBox({
-  tip, onCapture, onEnter, onLeave, metrics, metricsLoading, locked, onClose, primaryCNI,
+  tip, onCapture, onEnter, onLeave, metrics, metricsLoading, locked, onClose, primaryCNI, secondaryCNI,
 }: {
   tip: DotTip
   onCapture: () => void
@@ -647,8 +650,9 @@ function DotTipBox({
   locked: boolean
   onClose: () => void
   primaryCNI: string
+  secondaryCNI: string
 }) {
-  const cniLabel = getCNILabel(tip.node.interfaces.find(i => i.interface === tip.iface), primaryCNI)
+  const cniLabel = getCNILabel(tip.node.interfaces.find(i => i.interface === tip.iface), primaryCNI, secondaryCNI)
   const style: React.CSSProperties = {
     position: 'absolute',
     left: tip.pos.x,
@@ -1072,7 +1076,8 @@ function TopologyCanvas({
   const dnCount  = graph.nodes.filter(n => n.nfType === 'DN').length
   const nonBusEdges = graph.edges.filter(e => !e.busEdge).length
 
-  const primaryCNI = graph.primaryCNI ?? 'CNI'
+  const primaryCNI   = graph.primaryCNI   ?? 'CNI'
+  const secondaryCNI = graph.secondaryCNI ?? 'Secondary CNI'
 
   const handleCapture = useCallback((dot: DotTip) => {
     navigate(`/captures?pod=${dot.node.podName}&interface=${dot.iface}`)
@@ -1107,6 +1112,7 @@ function TopologyCanvas({
           locked={dotLocked}
           onClose={() => { setDotLocked(false); dotLockedRef.current = false; setDotTip(null) }}
           primaryCNI={primaryCNI}
+          secondaryCNI={secondaryCNI}
         />
       )}
 
