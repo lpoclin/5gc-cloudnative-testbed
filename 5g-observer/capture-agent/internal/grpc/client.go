@@ -66,6 +66,7 @@ func (c *Client) SendBatch(ctx context.Context, sessionID string, pkts []*pb.Pac
 	})
 	if err != nil {
 		log.Warn().Err(err).Msg("grpc send failed; will reopen stream")
+		_ = c.stream.CloseSend()
 		c.stream = nil
 		return err
 	}
