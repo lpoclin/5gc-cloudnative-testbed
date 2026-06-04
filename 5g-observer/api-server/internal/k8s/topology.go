@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -113,6 +114,7 @@ type TopologyGraph struct {
 	Edges      []TopologyEdge `json:"edges"`
 	UpdatedAt  time.Time      `json:"updatedAt"`
 	Namespaces []string       `json:"namespaces"`
+	PrimaryCNI string         `json:"primaryCNI"`
 }
 
 // ─── Network-status annotation types ─────────────────────────────────────────
@@ -437,6 +439,64 @@ func buildDNNodes(nodes []TopologyNode, entries []upfDNNEntry) ([]TopologyNode, 
 	return dnNodes, upfNodeDNNs, dnByDNN
 }
 
+// ─── Primary CNI detection ────────────────────────────────────────────────────
+
+var cniCache struct {
+	mu        sync.Mutex
+	value     string
+	fetchedAt time.Time
+}
+
+const cniCacheTTL = 60 * time.Second
+
+func detectPrimaryCNI(ctx context.Context, cs *kubernetes.Clientset) string {
+	cniCache.mu.Lock()
+	if cniCache.value != "" && time.Since(cniCache.fetchedAt) < cniCacheTTL {
+		v := cniCache.value
+		cniCache.mu.Unlock()
+		return v
+	}
+	cniCache.mu.Unlock()
+
+	pods, err := cs.CoreV1().Pods("kube-system").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return "CNI"
+	}
+
+	result := "CNI"
+	for _, pod := range pods.Items {
+		labels := pod.Labels
+		name := strings.ToLower(pod.Name)
+		if labels["k8s-app"] == "cilium" || strings.Contains(name, "cilium") {
+			result = "Cilium"
+			break
+		}
+		if labels["app"] == "flannel" || strings.Contains(name, "flannel") {
+			result = "Flannel"
+			break
+		}
+		if labels["k8s-app"] == "calico" || labels["app"] == "calico" || strings.Contains(name, "calico") {
+			result = "Calico"
+			break
+		}
+		if labels["app"] == "weave" || strings.Contains(name, "weave") {
+			result = "Weave"
+			break
+		}
+		if strings.Contains(name, "canal") {
+			result = "Canal"
+			break
+		}
+	}
+
+	cniCache.mu.Lock()
+	cniCache.value = result
+	cniCache.fetchedAt = time.Now()
+	cniCache.mu.Unlock()
+
+	return result
+}
+
 // ─── Topology discovery ───────────────────────────────────────────────────────
 
 func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []string) (*TopologyGraph, error) {
@@ -474,12 +534,14 @@ func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []s
 	nodes = append(nodes, dnNodes...)
 
 	edges := buildEdges(nodes, upfNodeDNNs, dnByDNN)
+	primaryCNI := detectPrimaryCNI(ctx, cs)
 
 	return &TopologyGraph{
 		Nodes:      nodes,
 		Edges:      edges,
 		UpdatedAt:  time.Now(),
 		Namespaces: foundNS,
+		PrimaryCNI: primaryCNI,
 	}, nil
 }
 

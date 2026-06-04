@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState, memo } from 'react'
 import cytoscape, { Core, ElementDefinition, EventObject, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useNavigate } from 'react-router-dom'
-import type { TopologyGraph, TopologyNode, TopologyEdge } from '@/types/topology'
+import type { TopologyGraph, TopologyNode, TopologyEdge, NetworkInterface } from '@/types/topology'
 
 // ─── Props & internal types ───────────────────────────────────────────────────
 
@@ -160,12 +160,14 @@ function eStyle(iface: string): { lineColor: string; lineStyle: 'solid' | 'dashe
   }
 }
 
-function cni(iface: string): string {
-  if (iface === 'eth0') return 'Cilium / eBPF'
-  if (['n2', 'n3', 'n4', 'n6', 'n9'].includes(iface)) return 'Multus / ipvlan'
-  if (iface === 'upfgtp') return 'kernel / gtp5g'
-  if (iface === 'uesimtun0') return 'UERANSIM / TUN'
-  return 'unknown'
+function getCNILabel(ifaceObj: NetworkInterface | undefined, primaryCNI: string): string {
+  if (!ifaceObj) return ''
+  if (ifaceObj.isDefault) return primaryCNI
+  if (ifaceObj.name) return 'Multus'
+  const ifName = ifaceObj.interface.toLowerCase()
+  if (ifName === 'upfgtp' || ifName.startsWith('gtp')) return 'kernel / gtp5g'
+  if (ifName === 'uesimtun0' || ifName.startsWith('tun')) return 'TUN'
+  return ''
 }
 
 // ─── Heart badge path (14×14 SVG viewbox) ────────────────────────────────────
@@ -634,7 +636,7 @@ function NodeTipBox({ tip, onEnter, onLeave }: { tip: NodeTip; onEnter: () => vo
 interface IfaceMetrics { throughputMbps: number; packetsPerSec: number; dropRate: number }
 
 function DotTipBox({
-  tip, onCapture, onEnter, onLeave, metrics, metricsLoading, locked, onClose,
+  tip, onCapture, onEnter, onLeave, metrics, metricsLoading, locked, onClose, primaryCNI,
 }: {
   tip: DotTip
   onCapture: () => void
@@ -644,7 +646,9 @@ function DotTipBox({
   metricsLoading: boolean
   locked: boolean
   onClose: () => void
+  primaryCNI: string
 }) {
+  const cniLabel = getCNILabel(tip.node.interfaces.find(i => i.interface === tip.iface), primaryCNI)
   const style: React.CSSProperties = {
     position: 'absolute',
     left: tip.pos.x,
@@ -679,7 +683,7 @@ function DotTipBox({
       <div className="font-mono mb-1" style={{ color: MUTED }}>
         {tip.node.interfaces.find(i => i.interface === tip.iface)?.ips[0] ?? ''}
       </div>
-      <div className="mb-1.5" style={{ color: MUTED }}>CNI: {cni(tip.iface)}</div>
+      {cniLabel && <div className="mb-1.5" style={{ color: MUTED }}>CNI: {cniLabel}</div>}
 
       {/* Interface metrics — always show all three rows */}
       {metricsLoading && !metrics ? (
@@ -1068,6 +1072,8 @@ function TopologyCanvas({
   const dnCount  = graph.nodes.filter(n => n.nfType === 'DN').length
   const nonBusEdges = graph.edges.filter(e => !e.busEdge).length
 
+  const primaryCNI = graph.primaryCNI ?? 'CNI'
+
   const handleCapture = useCallback((dot: DotTip) => {
     navigate(`/captures?pod=${dot.node.podName}&interface=${dot.iface}`)
   }, [navigate])
@@ -1100,6 +1106,7 @@ function TopologyCanvas({
           metricsLoading={metricsLoading}
           locked={dotLocked}
           onClose={() => { setDotLocked(false); dotLockedRef.current = false; setDotTip(null) }}
+          primaryCNI={primaryCNI}
         />
       )}
 
