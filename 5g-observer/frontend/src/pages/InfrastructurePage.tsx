@@ -171,7 +171,7 @@ export default function InfrastructurePage() {
 
         {/* Summary gauges */}
         {metrics ? (
-          <ClusterGauges metrics={metrics} />
+          <ClusterGauges metrics={metrics} clusterInfo={clusterInfo} />
         ) : (
           <div className="flex gap-3">
             {Array.from({ length: 4 }).map((_, i) => (

@@ -24,6 +24,7 @@ export interface K8sNode {
   osImage: string
   podCount: number
   podCapacity: number
+  createdAt: string
   // Stack info (Fix E)
   kernelVersion:    string
   containerRuntime: string
@@ -33,9 +34,10 @@ export interface K8sNode {
 }
 
 export interface ClusterInfo {
-  hypervisor:    string
-  cniPrimary:    string
-  cniSecondary:  string
+  hypervisor:       string
+  cniPrimary:       string
+  cniSecondary:     string
+  clusterCreatedAt?: string
 }
 
 export interface K8sEvent {

@@ -90,6 +90,12 @@ func (h *InfraHandler) GetNodes(c *gin.Context) {
 			statusStr = "Ready"
 		}
 
+		podAlloc := node.Status.Allocatable.Pods()
+		podCap := int64(110)
+		if podAlloc != nil {
+			podCap = podAlloc.Value()
+		}
+
 		result = append(result, map[string]interface{}{
 			"name":   nodeName,
 			"role":   role,
@@ -121,7 +127,8 @@ func (h *InfraHandler) GetNodes(c *gin.Context) {
 			"cpuCores":          cpuCores,
 			"totalMemoryGiB":    math.Round(float64(totalMemBytes)/1073741824*10) / 10,
 			"podCount":          podCount,
-			"podCapacity":       110,
+			"podCapacity":       podCap,
+			"createdAt":         node.CreationTimestamp.UTC().Format(time.RFC3339),
 		})
 	}
 	c.JSON(http.StatusOK, result)
@@ -192,12 +199,24 @@ func (h *InfraHandler) GetPVCs(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// GET /api/cluster-info — returns cluster-level stack facts from env vars
+// GET /api/cluster-info — returns cluster-level stack facts from env vars + oldest node timestamp
 func (h *InfraHandler) GetClusterInfo(c *gin.Context) {
+	clusterCreatedAt := ""
+	if nodes, err := h.cs.CoreV1().Nodes().List(c.Request.Context(), listOpts()); err == nil && len(nodes.Items) > 0 {
+		oldest := nodes.Items[0].CreationTimestamp.Time
+		for _, n := range nodes.Items[1:] {
+			if n.CreationTimestamp.Time.Before(oldest) {
+				oldest = n.CreationTimestamp.Time
+			}
+		}
+		clusterCreatedAt = oldest.UTC().Format(time.RFC3339)
+	}
+
 	c.JSON(http.StatusOK, map[string]interface{}{
-		"hypervisor":   envStr("CLUSTER_HYPERVISOR", ""),
-		"cniPrimary":   envStr("CLUSTER_CNI_PRIMARY", "Cilium"),
-		"cniSecondary": envStr("CLUSTER_CNI_SECONDARY", ""),
+		"hypervisor":       envStr("CLUSTER_HYPERVISOR", ""),
+		"cniPrimary":       envStr("CLUSTER_CNI_PRIMARY", "Cilium"),
+		"cniSecondary":     envStr("CLUSTER_CNI_SECONDARY", ""),
+		"clusterCreatedAt": clusterCreatedAt,
 	})
 }
 

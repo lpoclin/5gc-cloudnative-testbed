@@ -1,4 +1,4 @@
-import type { ClusterMetrics } from '@/types/k8s'
+import type { ClusterMetrics, ClusterInfo } from '@/types/k8s'
 
 interface GaugeProps {
   label: string
@@ -27,7 +27,7 @@ function Gauge({ label, value, max, color = '#3b82f6', status = 'ok' }: GaugePro
   )
 }
 
-export default function ClusterGauges({ metrics }: { metrics: ClusterMetrics }) {
+export default function ClusterGauges({ metrics, clusterInfo }: { metrics: ClusterMetrics; clusterInfo?: ClusterInfo }) {
   const podStatus =
     metrics.podsRunning === metrics.podsTotal ? 'ok'
     : metrics.podsRunning > metrics.podsTotal * 0.8 ? 'warn'
@@ -36,10 +36,13 @@ export default function ClusterGauges({ metrics }: { metrics: ClusterMetrics }) 
   const nodeStatus = metrics.nodesReady === metrics.nodesTotal ? 'ok' : 'error'
   const pvcStatus  = metrics.pvcsBound === metrics.pvcsTotal ? 'ok' : 'warn'
 
-  // Uptime based on current time minus a fixed start
-  const uptimeDays  = 7
-  const uptimeHours = 19
-  const uptimeStr   = `${uptimeDays}d ${uptimeHours}h`
+  let uptimeStr = '—'
+  if (clusterInfo?.clusterCreatedAt) {
+    const diffMs = Date.now() - new Date(clusterInfo.clusterCreatedAt).getTime()
+    const days  = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    uptimeStr = `${days}d ${hours}h`
+  }
 
   return (
     <div className="flex flex-wrap gap-3">
