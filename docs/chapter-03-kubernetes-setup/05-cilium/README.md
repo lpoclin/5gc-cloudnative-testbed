@@ -134,6 +134,34 @@ kubectl get pods -A -o wide
 
 ---
 
+## Step 6 — (Optional) Enable Hubble Metrics Export
+
+Hubble can export flow metrics to any Prometheus-compatible stack. This is disabled by default. Run the following to enable a recommended baseline set covering drops, TCP flags, and flow verdicts:
+
+```bash
+helm upgrade cilium cilium/cilium \
+  --version 1.19.3 \
+  --namespace kube-system \
+  --reuse-values \
+  --set hubble.metrics.enabled="{drop,tcp,flow,icmp}" \
+  --set hubble.metrics.port=9965
+```
+
+```bash
+kubectl rollout status daemonset cilium -n kube-system
+```
+
+> `--reuse-values` preserves all existing configuration. Additional metrics (`dns`, `http`, `port-distribution`) can be appended to the list — see the [Hubble metrics reference](https://docs.cilium.io/en/stable/observability/metrics/) for the full catalogue.
+
+| Metric | Exposes |
+|---|---|
+| `drop` | `hubble_drop_total` — packet drops with reason label (POLICY_DENIED, INVALID_PACKET, etc.) |
+| `tcp` | `hubble_tcp_flags_total` — TCP flag distribution (SYN, FIN, RST) per pod |
+| `flow` | `hubble_flows_processed_total` — forwarded vs dropped flow counts |
+| `icmp` | `hubble_icmp_total` — ICMP traffic by type |
+
+---
+
 ## References
 
 - \[1\] Cilium Documentation, "Routing — Cilium 1.19.3."
@@ -142,6 +170,8 @@ kubectl get pods -A -o wide
       https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/ [Accessed: May 2026]
 - \[3\] Cilium Documentation, "Hubble Setup."
       https://docs.cilium.io/en/stable/observability/hubble/setup/ [Accessed: May 2026]
+- \[4\] Cilium Documentation, "Hubble Metrics."
+      https://docs.cilium.io/en/stable/observability/metrics/ [Accessed: May 2026]
 
 ---
 
