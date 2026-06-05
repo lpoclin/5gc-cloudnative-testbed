@@ -892,6 +892,7 @@ function CaptureTabPanel({
     setPackets([])
     setCaptureTs(0)
     setTsharkReady(false)
+    console.log('tsharkReady=false', tab.pod, tab.iface)
     counterRef.current = 0
     bufferRef.current  = []
     pausedRef.current  = false
@@ -923,7 +924,11 @@ function CaptureTabPanel({
         rawHex: p.raw ? base64ToHex(p.raw) : undefined,
       }))
       setCaptureTs(prev => prev === 0 && parsed.length > 0 ? Number(parsed[0].ts) : prev)
-      if (!tsharkReady && parsed.some(p => p.protocol !== '')) setTsharkReady(true)
+      parsed.forEach(p => console.log('packet', p.protocol, p.info))
+      if (!tsharkReady && parsed.some(p => p.protocol !== '')) {
+        console.log('tsharkReady=true', tab.pod, tab.iface)
+        setTsharkReady(true)
+      }
       if (pausedRef.current) {
         bufferRef.current = [...bufferRef.current, ...parsed].slice(-RING_MAX)
       } else {
