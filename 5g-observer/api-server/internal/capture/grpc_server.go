@@ -404,7 +404,7 @@ func (s *Server) StreamPackets(stream grpc.ClientStreamingServer[pb.PacketBatch,
 			s.nodeIndex[wk] = p0.Node
 			if s.agentIPIndex[p0.Node] != addr {
 				s.agentIPIndex[p0.Node] = addr
-				log.Debug().Str("node", p0.Node).Str("addr", addr).Msg("registered capture-agent")
+				log.Info().Str("node", p0.Node).Str("addr", addr).Msg("registered capture-agent")
 			}
 			s.indexMu.Unlock()
 		}
