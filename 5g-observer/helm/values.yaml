@@ -48,11 +48,12 @@ captureAgent:
     retentionHours: 24
   resources:
     requests:
-      cpu: 100m
-      memory: 512Mi
+      cpu: 50m
+      memory: 256Mi
     limits:
+      # Idle: ~200Mi, 8 active tabs: ~840Mi
       cpu: 500m
-      memory: 2Gi
+      memory: 1Gi
 
 loki:
   url: http://loki-gateway.loki

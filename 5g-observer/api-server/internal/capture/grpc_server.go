@@ -3,6 +3,7 @@
 package capture
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/lpoclin/5g-observer/api-server/internal/pb"
 )
@@ -149,6 +151,17 @@ type Server struct {
 	// Packet ring buffer for decode queries (stores raw bytes, keyed by pod+interface)
 	pktRingMu sync.RWMutex
 	pktRings  map[wildcardKey]*pktRingBuf
+
+	// Index maps populated from incoming PacketBatch metadata.
+	// nodeIndex:    {pod,iface} → node name
+	// agentIPIndex: node name  → capture-agent control address (podIP:9998)
+	indexMu      sync.RWMutex
+	nodeIndex    map[wildcardKey]string
+	agentIPIndex map[string]string
+
+	// Lazy gRPC clients to capture-agent control servers, keyed by addr.
+	agentClientsMu sync.Mutex
+	agentClients   map[string]*grpc.ClientConn
 }
 
 const PktRingCap = 10_000
@@ -159,6 +172,9 @@ func NewServer() *Server {
 		wildcardSubs: make(map[wildcardKey][]Subscriber),
 		statsMap:     make(map[wildcardKey][]statEntry),
 		pktRings:     make(map[wildcardKey]*pktRingBuf),
+		nodeIndex:    make(map[wildcardKey]string),
+		agentIPIndex: make(map[string]string),
+		agentClients: make(map[string]*grpc.ClientConn),
 	}
 }
 
@@ -380,6 +396,19 @@ func (s *Server) StreamPackets(stream grpc.ClientStreamingServer[pb.PacketBatch,
 		p0 := batch.Packets[0]
 		key := SessionKey{Node: p0.Node, PodName: p0.PodName, Iface: p0.InterfaceName}
 
+		// Register capture-agent address when pod_ip is provided in the batch.
+		if batch.PodIp != "" {
+			wk := wildcardKey{PodName: p0.PodName, Iface: p0.InterfaceName}
+			addr := batch.PodIp + ":9998"
+			s.indexMu.Lock()
+			s.nodeIndex[wk] = p0.Node
+			if s.agentIPIndex[p0.Node] != addr {
+				s.agentIPIndex[p0.Node] = addr
+				log.Debug().Str("node", p0.Node).Str("addr", addr).Msg("registered capture-agent")
+			}
+			s.indexMu.Unlock()
+		}
+
 		log.Debug().
 			Str("pod", p0.PodName).
 			Str("iface", p0.InterfaceName).
@@ -446,6 +475,43 @@ func (s *Server) Subscribe(req *pb.SubscribeRequest, stream grpc.ServerStreaming
 			}
 		}
 	}
+}
+
+// getCaptureAgentAddr returns the control address for the capture-agent
+// responsible for the given pod+interface, or "" if not yet registered.
+func (s *Server) getCaptureAgentAddr(pod, iface string) string {
+	s.indexMu.RLock()
+	defer s.indexMu.RUnlock()
+	node := s.nodeIndex[wildcardKey{PodName: pod, Iface: iface}]
+	return s.agentIPIndex[node]
+}
+
+// getAgentClient returns (creating if necessary) a gRPC client to the
+// capture-agent control server at addr.
+func (s *Server) getAgentClient(addr string) (pb.CaptureAgentControlClient, error) {
+	s.agentClientsMu.Lock()
+	defer s.agentClientsMu.Unlock()
+	if conn, ok := s.agentClients[addr]; ok {
+		return pb.NewCaptureAgentControlClient(conn), nil
+	}
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	s.agentClients[addr] = conn
+	return pb.NewCaptureAgentControlClient(conn), nil
+}
+
+// PingCaptureAgent checks connectivity to the capture-agent at addr.
+func (s *Server) PingCaptureAgent(addr string) error {
+	client, err := s.getAgentClient(addr)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err = client.Ping(ctx, &pb.PingRequest{})
+	return err
 }
 
 // ListenAndServe starts the gRPC listener on addr.

@@ -37,6 +37,10 @@ spec:
                 - NET_RAW
                 - NET_ADMIN
                 - SYS_PTRACE
+          ports:
+            - name: control
+              containerPort: 9998
+              protocol: TCP
           env:
             - name: API_SERVER_ADDR
               value: "observer-api:9999"
@@ -46,6 +50,16 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: CONTROL_ADDR
+              value: ":9998"
+            - name: GOMEMLIMIT
+              value: "900MiB"
+            - name: GOGC
+              value: "50"
           volumeMounts:
             - name: proc
               mountPath: /proc

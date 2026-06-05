@@ -10,8 +10,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/lpoclin/5g-observer/capture-agent/internal/discovery"
 	"github.com/lpoclin/5g-observer/capture-agent/internal/capture"
+	"github.com/lpoclin/5g-observer/capture-agent/internal/control"
+	"github.com/lpoclin/5g-observer/capture-agent/internal/discovery"
 	agentgrpc "github.com/lpoclin/5g-observer/capture-agent/internal/grpc"
 )
 
@@ -48,6 +49,15 @@ func main() {
 	// ── Capture manager ──────────────────────────────────────────────────────
 	capMgr := capture.NewManager(grpcClient)
 
+	// ── Control gRPC server (api-server → capture-agent) ─────────────────────
+	controlAddr := envOr("CONTROL_ADDR", ":9998")
+	controlServer := control.NewServer(capMgr)
+	go func() {
+		if err := controlServer.ListenAndServe(controlAddr); err != nil {
+			log.Error().Err(err).Msg("control server exited")
+		}
+	}()
+
 	go disc.Run(ctx, func(pods []discovery.PodInfo) {
 		capMgr.Reconcile(ctx, pods)
 	})
@@ -59,6 +69,7 @@ func main() {
 	log.Info().Msg("shutting down capture-agent")
 	cancel()
 	capMgr.StopAll()
+	controlServer.GracefulStop()
 	log.Info().Msg("goodbye")
 }
 

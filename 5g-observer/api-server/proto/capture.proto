@@ -1,4 +1,4 @@
-﻿syntax = "proto3";
+syntax = "proto3";
 
 package capture.v1;
 
@@ -25,6 +25,7 @@ message Packet {
 message PacketBatch {
   repeated Packet packets    = 1;
   string          session_id = 2;
+  string          pod_ip     = 3;
 }
 
 // SubscribeRequest asks the api-server to fan out packets for a session.
@@ -39,6 +40,12 @@ message Ack {
   bool ok = 1;
 }
 
+// TsharkRequest asks capture-agent to enable/disable tshark for a session.
+message TsharkRequest  { string session_id = 1; }
+message TsharkResponse { bool   ok         = 1; }
+message PingRequest    {}
+message PingResponse   { bool   ok         = 1; }
+
 // CaptureService is served by the api-server gRPC endpoint (:9999).
 // capture-agent is the client that pushes batches; the frontend WebSocket
 // handler subscribes to fan-out via Server.Subscribe().
@@ -47,4 +54,12 @@ service CaptureService {
   rpc StreamPackets(stream PacketBatch) returns (Ack);
   // Subscribe: api-server -> caller (server-streaming), used internally
   rpc Subscribe(SubscribeRequest) returns (stream PacketBatch);
+}
+
+// CaptureAgentControl is served by capture-agent (:9998).
+// api-server calls this to enable/disable tshark on demand.
+service CaptureAgentControl {
+  rpc EnableTshark(TsharkRequest)  returns (TsharkResponse);
+  rpc DisableTshark(TsharkRequest) returns (TsharkResponse);
+  rpc Ping(PingRequest)            returns (PingResponse);
 }

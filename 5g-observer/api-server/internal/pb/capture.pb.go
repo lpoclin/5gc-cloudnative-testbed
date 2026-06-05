@@ -167,6 +167,7 @@ type PacketBatch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Packets       []*Packet              `protobuf:"bytes,1,rep,name=packets,proto3" json:"packets,omitempty"`
 	SessionId     string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	PodIp         string                 `protobuf:"bytes,3,opt,name=pod_ip,json=podIp,proto3" json:"pod_ip,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -211,6 +212,13 @@ func (x *PacketBatch) GetPackets() []*Packet {
 func (x *PacketBatch) GetSessionId() string {
 	if x != nil {
 		return x.SessionId
+	}
+	return ""
+}
+
+func (x *PacketBatch) GetPodIp() string {
+	if x != nil {
+		return x.PodIp
 	}
 	return ""
 }
@@ -321,6 +329,175 @@ func (x *Ack) GetOk() bool {
 	return false
 }
 
+// TsharkRequest asks capture-agent to enable/disable tshark for a session.
+type TsharkRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TsharkRequest) Reset() {
+	*x = TsharkRequest{}
+	mi := &file_capture_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TsharkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TsharkRequest) ProtoMessage() {}
+
+func (x *TsharkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_capture_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TsharkRequest.ProtoReflect.Descriptor instead.
+func (*TsharkRequest) Descriptor() ([]byte, []int) {
+	return file_capture_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *TsharkRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type TsharkResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TsharkResponse) Reset() {
+	*x = TsharkResponse{}
+	mi := &file_capture_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TsharkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TsharkResponse) ProtoMessage() {}
+
+func (x *TsharkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_capture_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TsharkResponse.ProtoReflect.Descriptor instead.
+func (*TsharkResponse) Descriptor() ([]byte, []int) {
+	return file_capture_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *TsharkResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+type PingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingRequest) Reset() {
+	*x = PingRequest{}
+	mi := &file_capture_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingRequest) ProtoMessage() {}
+
+func (x *PingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_capture_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PingRequest.ProtoReflect.Descriptor instead.
+func (*PingRequest) Descriptor() ([]byte, []int) {
+	return file_capture_proto_rawDescGZIP(), []int{6}
+}
+
+type PingResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingResponse) Reset() {
+	*x = PingResponse{}
+	mi := &file_capture_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingResponse) ProtoMessage() {}
+
+func (x *PingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_capture_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PingResponse.ProtoReflect.Descriptor instead.
+func (*PingResponse) Descriptor() ([]byte, []int) {
+	return file_capture_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *PingResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
 var File_capture_proto protoreflect.FileDescriptor
 
 const file_capture_proto_rawDesc = "" +
@@ -341,20 +518,33 @@ const file_capture_proto_rawDesc = "" +
 	" \x01(\tR\rinterfaceName\x12\x19\n" +
 	"\bpod_name\x18\v \x01(\tR\apodName\x12\x1c\n" +
 	"\tnamespace\x18\f \x01(\tR\tnamespace\x12\x12\n" +
-	"\x04node\x18\r \x01(\tR\x04node\"Z\n" +
+	"\x04node\x18\r \x01(\tR\x04node\"q\n" +
 	"\vPacketBatch\x12,\n" +
 	"\apackets\x18\x01 \x03(\v2\x12.capture.v1.PacketR\apackets\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\tR\tsessionId\"h\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\x12\x15\n" +
+	"\x06pod_ip\x18\x03 \x01(\tR\x05podIp\"h\n" +
 	"\x10SubscribeRequest\x12\x12\n" +
 	"\x04node\x18\x01 \x01(\tR\x04node\x12\x19\n" +
 	"\bpod_name\x18\x02 \x01(\tR\apodName\x12%\n" +
 	"\x0einterface_name\x18\x03 \x01(\tR\rinterfaceName\"\x15\n" +
 	"\x03Ack\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\".\n" +
+	"\rTsharkRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\" \n" +
+	"\x0eTsharkResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\"\r\n" +
+	"\vPingRequest\"\x1e\n" +
+	"\fPingResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok2\x93\x01\n" +
 	"\x0eCaptureService\x12;\n" +
 	"\rStreamPackets\x12\x17.capture.v1.PacketBatch\x1a\x0f.capture.v1.Ack(\x01\x12D\n" +
-	"\tSubscribe\x12\x1c.capture.v1.SubscribeRequest\x1a\x17.capture.v1.PacketBatch0\x01B:Z8github.com/lpoclin/5g-observer/api-server/internal/pb;pbb\x06proto3"
+	"\tSubscribe\x12\x1c.capture.v1.SubscribeRequest\x1a\x17.capture.v1.PacketBatch0\x012\xdf\x01\n" +
+	"\x13CaptureAgentControl\x12E\n" +
+	"\fEnableTshark\x12\x19.capture.v1.TsharkRequest\x1a\x1a.capture.v1.TsharkResponse\x12F\n" +
+	"\rDisableTshark\x12\x19.capture.v1.TsharkRequest\x1a\x1a.capture.v1.TsharkResponse\x129\n" +
+	"\x04Ping\x12\x17.capture.v1.PingRequest\x1a\x18.capture.v1.PingResponseB:Z8github.com/lpoclin/5g-observer/api-server/internal/pb;pbb\x06proto3"
 
 var (
 	file_capture_proto_rawDescOnce sync.Once
@@ -368,21 +558,31 @@ func file_capture_proto_rawDescGZIP() []byte {
 	return file_capture_proto_rawDescData
 }
 
-var file_capture_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_capture_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_capture_proto_goTypes = []any{
 	(*Packet)(nil),           // 0: capture.v1.Packet
 	(*PacketBatch)(nil),      // 1: capture.v1.PacketBatch
 	(*SubscribeRequest)(nil), // 2: capture.v1.SubscribeRequest
 	(*Ack)(nil),              // 3: capture.v1.Ack
+	(*TsharkRequest)(nil),    // 4: capture.v1.TsharkRequest
+	(*TsharkResponse)(nil),   // 5: capture.v1.TsharkResponse
+	(*PingRequest)(nil),      // 6: capture.v1.PingRequest
+	(*PingResponse)(nil),     // 7: capture.v1.PingResponse
 }
 var file_capture_proto_depIdxs = []int32{
 	0, // 0: capture.v1.PacketBatch.packets:type_name -> capture.v1.Packet
 	1, // 1: capture.v1.CaptureService.StreamPackets:input_type -> capture.v1.PacketBatch
 	2, // 2: capture.v1.CaptureService.Subscribe:input_type -> capture.v1.SubscribeRequest
-	3, // 3: capture.v1.CaptureService.StreamPackets:output_type -> capture.v1.Ack
-	1, // 4: capture.v1.CaptureService.Subscribe:output_type -> capture.v1.PacketBatch
-	3, // [3:5] is the sub-list for method output_type
-	1, // [1:3] is the sub-list for method input_type
+	4, // 3: capture.v1.CaptureAgentControl.EnableTshark:input_type -> capture.v1.TsharkRequest
+	4, // 4: capture.v1.CaptureAgentControl.DisableTshark:input_type -> capture.v1.TsharkRequest
+	6, // 5: capture.v1.CaptureAgentControl.Ping:input_type -> capture.v1.PingRequest
+	3, // 6: capture.v1.CaptureService.StreamPackets:output_type -> capture.v1.Ack
+	1, // 7: capture.v1.CaptureService.Subscribe:output_type -> capture.v1.PacketBatch
+	5, // 8: capture.v1.CaptureAgentControl.EnableTshark:output_type -> capture.v1.TsharkResponse
+	5, // 9: capture.v1.CaptureAgentControl.DisableTshark:output_type -> capture.v1.TsharkResponse
+	7, // 10: capture.v1.CaptureAgentControl.Ping:output_type -> capture.v1.PingResponse
+	6, // [6:11] is the sub-list for method output_type
+	1, // [1:6] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -399,9 +599,9 @@ func file_capture_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_capture_proto_rawDesc), len(file_capture_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   8,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_capture_proto_goTypes,
 		DependencyIndexes: file_capture_proto_depIdxs,

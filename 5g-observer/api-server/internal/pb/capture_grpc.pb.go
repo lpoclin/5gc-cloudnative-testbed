@@ -165,3 +165,187 @@ var CaptureService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "capture.proto",
 }
+
+const (
+	CaptureAgentControl_EnableTshark_FullMethodName  = "/capture.v1.CaptureAgentControl/EnableTshark"
+	CaptureAgentControl_DisableTshark_FullMethodName = "/capture.v1.CaptureAgentControl/DisableTshark"
+	CaptureAgentControl_Ping_FullMethodName          = "/capture.v1.CaptureAgentControl/Ping"
+)
+
+// CaptureAgentControlClient is the client API for CaptureAgentControl service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// CaptureAgentControl is served by capture-agent (:9998).
+// api-server calls this to enable/disable tshark on demand.
+type CaptureAgentControlClient interface {
+	EnableTshark(ctx context.Context, in *TsharkRequest, opts ...grpc.CallOption) (*TsharkResponse, error)
+	DisableTshark(ctx context.Context, in *TsharkRequest, opts ...grpc.CallOption) (*TsharkResponse, error)
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
+}
+
+type captureAgentControlClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewCaptureAgentControlClient(cc grpc.ClientConnInterface) CaptureAgentControlClient {
+	return &captureAgentControlClient{cc}
+}
+
+func (c *captureAgentControlClient) EnableTshark(ctx context.Context, in *TsharkRequest, opts ...grpc.CallOption) (*TsharkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TsharkResponse)
+	err := c.cc.Invoke(ctx, CaptureAgentControl_EnableTshark_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *captureAgentControlClient) DisableTshark(ctx context.Context, in *TsharkRequest, opts ...grpc.CallOption) (*TsharkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TsharkResponse)
+	err := c.cc.Invoke(ctx, CaptureAgentControl_DisableTshark_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *captureAgentControlClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PingResponse)
+	err := c.cc.Invoke(ctx, CaptureAgentControl_Ping_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// CaptureAgentControlServer is the server API for CaptureAgentControl service.
+// All implementations must embed UnimplementedCaptureAgentControlServer
+// for forward compatibility.
+//
+// CaptureAgentControl is served by capture-agent (:9998).
+// api-server calls this to enable/disable tshark on demand.
+type CaptureAgentControlServer interface {
+	EnableTshark(context.Context, *TsharkRequest) (*TsharkResponse, error)
+	DisableTshark(context.Context, *TsharkRequest) (*TsharkResponse, error)
+	Ping(context.Context, *PingRequest) (*PingResponse, error)
+	mustEmbedUnimplementedCaptureAgentControlServer()
+}
+
+// UnimplementedCaptureAgentControlServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedCaptureAgentControlServer struct{}
+
+func (UnimplementedCaptureAgentControlServer) EnableTshark(context.Context, *TsharkRequest) (*TsharkResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EnableTshark not implemented")
+}
+func (UnimplementedCaptureAgentControlServer) DisableTshark(context.Context, *TsharkRequest) (*TsharkResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DisableTshark not implemented")
+}
+func (UnimplementedCaptureAgentControlServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedCaptureAgentControlServer) mustEmbedUnimplementedCaptureAgentControlServer() {}
+func (UnimplementedCaptureAgentControlServer) testEmbeddedByValue()                             {}
+
+// UnsafeCaptureAgentControlServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to CaptureAgentControlServer will
+// result in compilation errors.
+type UnsafeCaptureAgentControlServer interface {
+	mustEmbedUnimplementedCaptureAgentControlServer()
+}
+
+func RegisterCaptureAgentControlServer(s grpc.ServiceRegistrar, srv CaptureAgentControlServer) {
+	// If the following call panics, it indicates UnimplementedCaptureAgentControlServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&CaptureAgentControl_ServiceDesc, srv)
+}
+
+func _CaptureAgentControl_EnableTshark_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TsharkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CaptureAgentControlServer).EnableTshark(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CaptureAgentControl_EnableTshark_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CaptureAgentControlServer).EnableTshark(ctx, req.(*TsharkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CaptureAgentControl_DisableTshark_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TsharkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CaptureAgentControlServer).DisableTshark(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CaptureAgentControl_DisableTshark_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CaptureAgentControlServer).DisableTshark(ctx, req.(*TsharkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CaptureAgentControl_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CaptureAgentControlServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CaptureAgentControl_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CaptureAgentControlServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// CaptureAgentControl_ServiceDesc is the grpc.ServiceDesc for CaptureAgentControl service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var CaptureAgentControl_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "capture.v1.CaptureAgentControl",
+	HandlerType: (*CaptureAgentControlServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "EnableTshark",
+			Handler:    _CaptureAgentControl_EnableTshark_Handler,
+		},
+		{
+			MethodName: "DisableTshark",
+			Handler:    _CaptureAgentControl_DisableTshark_Handler,
+		},
+		{
+			MethodName: "Ping",
+			Handler:    _CaptureAgentControl_Ping_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "capture.proto",
+}

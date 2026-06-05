@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ type Client struct {
 	stub   pb.CaptureServiceClient
 	stream pb.CaptureService_StreamPacketsClient
 	addr   string
+	podIP  string // own pod IP injected via POD_IP env, sent in every batch
 }
 
 func NewClient(addr string) (*Client, error) {
@@ -37,9 +39,10 @@ func NewClient(addr string) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		conn: conn,
-		stub: pb.NewCaptureServiceClient(conn),
-		addr: addr,
+		conn:  conn,
+		stub:  pb.NewCaptureServiceClient(conn),
+		addr:  addr,
+		podIP: os.Getenv("POD_IP"),
 	}, nil
 }
 
@@ -65,6 +68,7 @@ func (c *Client) SendBatch(ctx context.Context, sessionID string, pkts []*pb.Pac
 	err := c.stream.Send(&pb.PacketBatch{
 		Packets:   pkts,
 		SessionId: sessionID,
+		PodIp:     c.podIP,
 	})
 	if err != nil {
 		log.Warn().Err(err).Msg("grpc send failed; will reopen stream")
