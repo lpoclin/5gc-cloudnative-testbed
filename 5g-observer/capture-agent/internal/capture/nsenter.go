@@ -417,16 +417,35 @@ func extractPacketFields(data []byte) (srcIP, dstIP string, srcPort, dstPort uin
 	case 0x0806: // ARP
 		proto = "ARP"
 		if offset+28 <= len(data) {
+			oper := binary.BigEndian.Uint16(data[offset+6 : offset+8])
 			senderIP := fmt.Sprintf("%d.%d.%d.%d", data[offset+14], data[offset+15], data[offset+16], data[offset+17])
 			targetIP := fmt.Sprintf("%d.%d.%d.%d", data[offset+24], data[offset+25], data[offset+26], data[offset+27])
-			info = fmt.Sprintf("Who has %s? Tell %s", targetIP, senderIP)
 			srcIP = senderIP
 			dstIP = targetIP
+			switch oper {
+			case 1:
+				info = fmt.Sprintf("Who has %s? Tell %s", targetIP, senderIP)
+			case 2:
+				senderMAC := fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x",
+					data[offset+8], data[offset+9], data[offset+10],
+					data[offset+11], data[offset+12], data[offset+13])
+				info = fmt.Sprintf("%s is at %s", senderIP, senderMAC)
+			default:
+				info = fmt.Sprintf("ARP op=%d", oper)
+			}
 		}
 
 	default:
-		proto = fmt.Sprintf("0x%04X", etherType)
-		info = "Ethernet II"
+		if len(data) >= 14 {
+			dstMAC := fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x",
+				data[0], data[1], data[2], data[3], data[4], data[5])
+			srcMAC := fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x",
+				data[6], data[7], data[8], data[9], data[10], data[11])
+			srcIP = srcMAC
+			dstIP = dstMAC
+			proto = fmt.Sprintf("0x%04X", etherType)
+			info = "Ethernet II"
+		}
 	}
 	return
 }
