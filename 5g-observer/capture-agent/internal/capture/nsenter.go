@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -186,12 +187,14 @@ func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan 
 		}
 
 		defer func() {
+			log.Debug().Str("uid", podUID).Str("iface", iface).Int("goroutines", runtime.NumGoroutine()).Msg("runcapture exiting, cleanup starting")
 			tcpdump.Process.Kill()
 			tshark.Process.Kill()
 			pcapPipeW.Close()
 			closeRawCh() // Fix 2: ensure rawCh is closed when main goroutine exits
 			tcpdump.Wait()
 			tshark.Wait()
+			log.Debug().Str("uid", podUID).Str("iface", iface).Int("goroutines", runtime.NumGoroutine()).Msg("runcapture exited")
 		}()
 
 		scanner := bufio.NewScanner(tsharkOut)

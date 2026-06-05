@@ -3,6 +3,7 @@ package capture
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -38,10 +39,25 @@ type Manager struct {
 }
 
 func NewManager(g *agentgrpc.Client) *Manager {
-	return &Manager{
+	m := &Manager{
 		sessions: make(map[sessionKey]*session),
 		grpc:     g,
 	}
+	go func() {
+		t := time.NewTicker(60 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			var ms runtime.MemStats
+			runtime.ReadMemStats(&ms)
+			log.Info().
+				Uint64("heap_alloc_mb", ms.HeapAlloc/1024/1024).
+				Uint64("heap_sys_mb", ms.HeapSys/1024/1024).
+				Uint64("heap_inuse_mb", ms.HeapInuse/1024/1024).
+				Int("goroutines", runtime.NumGoroutine()).
+				Msg("memory stats")
+		}
+	}()
+	return m
 }
 
 // Reconcile starts missing captures and stops stale ones based on current pod list.
@@ -60,6 +76,7 @@ func (m *Manager) Reconcile(ctx context.Context, pods []discovery.PodInfo) {
 	for key, sess := range m.sessions {
 		if _, ok := desired[key]; !ok {
 			log.Info().Str("uid", key.podUID[:8]).Str("iface", key.iface).Msg("stopping capture")
+			log.Debug().Str("pod", sess.podName).Str("iface", key.iface).Int("goroutines", runtime.NumGoroutine()).Msg("session cancelled")
 			sess.cancel()
 			delete(m.sessions, key)
 		}
@@ -82,7 +99,13 @@ func (m *Manager) Reconcile(ctx context.Context, pods []discovery.PodInfo) {
 		m.sessions[key] = sess
 
 		go m.runCapture(sessCtx, key, pod, sess)
+		log.Debug().Str("pod", pod.Name).Str("iface", key.iface).Int("goroutines", runtime.NumGoroutine()).Msg("session started")
 	}
+
+	log.Debug().
+		Int("active_sessions", len(m.sessions)).
+		Int("goroutines", runtime.NumGoroutine()).
+		Msg("reconcile tick")
 }
 
 func (m *Manager) runCapture(ctx context.Context, key sessionKey, pod discovery.PodInfo, sess *session) {

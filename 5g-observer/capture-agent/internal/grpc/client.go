@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"time"
 
@@ -58,6 +59,7 @@ func (c *Client) SendBatch(ctx context.Context, sessionID string, pkts []*pb.Pac
 			return err
 		}
 		c.stream = stream
+		log.Debug().Str("session", sessionID).Int("goroutines", runtime.NumGoroutine()).Msg("grpc stream opened")
 	}
 
 	err := c.stream.Send(&pb.PacketBatch{
@@ -67,6 +69,7 @@ func (c *Client) SendBatch(ctx context.Context, sessionID string, pkts []*pb.Pac
 	if err != nil {
 		log.Warn().Err(err).Msg("grpc send failed; will reopen stream")
 		_ = c.stream.CloseSend()
+		log.Debug().Str("session", sessionID).Int("goroutines", runtime.NumGoroutine()).Msg("grpc stream closed via CloseSend")
 		c.stream = nil
 		return err
 	}
