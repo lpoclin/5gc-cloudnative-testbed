@@ -519,22 +519,35 @@ func (s *Server) GetSubCount(key SessionKey) int {
 
 // CallEnableTshark signals the capture-agent for pod+iface to start tshark.
 // Must be called in its own goroutine — makes a blocking gRPC call.
+// Retries addr lookup up to 10×200ms in case the viewer opens before the
+// capture-agent has sent its first PacketBatch (addr not yet registered).
 func (s *Server) CallEnableTshark(pod, iface, sessionID string) {
-	addr := s.getCaptureAgentAddr(pod, iface)
+	var addr string
+	for i := 0; i < 10; i++ {
+		addr = s.getCaptureAgentAddr(pod, iface)
+		if addr != "" {
+			break
+		}
+		log.Debug().Str("pod", pod).Str("iface", iface).
+			Int("attempt", i+1).
+			Msg("callEnableTshark: agent addr not yet registered, retrying")
+		time.Sleep(200 * time.Millisecond)
+	}
 	if addr == "" {
-		log.Warn().Str("pod", pod).Str("iface", iface).Msg("callEnableTshark: no agent addr registered")
+		log.Warn().Str("pod", pod).Str("iface", iface).
+			Msg("callEnableTshark: no agent addr after 2s, giving up")
 		return
 	}
 	client, err := s.getAgentClient(addr)
 	if err != nil {
-		log.Error().Err(err).Str("addr", addr).Msg("callEnableTshark: client error")
+		log.Warn().Err(err).Str("pod", pod).Msg("callEnableTshark: getAgentClient failed")
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	resp, err := client.EnableTshark(ctx, &pb.TsharkRequest{SessionId: sessionID})
 	if err != nil {
-		log.Error().Err(err).Str("session", sessionID).Msg("callEnableTshark: rpc failed")
+		log.Warn().Err(err).Str("session", sessionID).Msg("callEnableTshark: RPC failed")
 		return
 	}
 	log.Info().Str("session", sessionID).Bool("ok", resp.Ok).Msg("tshark enabled on agent")
