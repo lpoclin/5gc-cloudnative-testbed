@@ -38,12 +38,13 @@ interface LivePacket {
 }
 
 type ConnStatus = 'idle' | 'connecting' | 'live' | 'paused' | 'error' | 'stopped'
+type EmptyState = 'starting' | 'waiting' | 'active'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const RING_MAX         = 10_000
 const MAX_CAPTURE_TABS = 8
-const PROTOCOLS = ['All', 'GTP-U', 'PFCP', 'HTTP/2', 'NGAP', 'SCTP', 'DNS', 'TCP', 'UDP'] as const
+const PROTOCOLS = ['All', 'GTP-U', 'PFCP', 'HTTP', 'HTTP/2', 'NGAP', 'SCTP', 'DNS', 'TCP', 'UDP'] as const
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -879,6 +880,9 @@ function CaptureTabPanel({
   const [rangeFrom,    setRangeFrom]   = useState('')
   const [rangeTo,      setRangeTo]     = useState('')
   const [status,       setStatus]      = useState<ConnStatus>('idle')
+  const [emptyState,   setEmptyState]  = useState<EmptyState>('starting')
+
+  const currentTabKey = `${tab.pod}/${tab.iface}`
 
   const reportStatus = useCallback((s: ConnStatus) => {
     setStatus(s)
@@ -920,6 +924,7 @@ function CaptureTabPanel({
         info: p.info, iface: p.iface, pod: p.pod,
         rawHex: p.raw ? base64ToHex(p.raw) : undefined,
       }))
+      if (parsed.some(p => !p.info.endsWith('(raw)'))) setEmptyState(prev => prev !== 'active' ? 'active' : prev)
       setCaptureTs(prev => prev === 0 && parsed.length > 0 ? Number(parsed[0].ts) : prev)
       if (pausedRef.current) {
         bufferRef.current = [...bufferRef.current, ...parsed].slice(-RING_MAX)
@@ -930,10 +935,32 @@ function CaptureTabPanel({
     return () => { ws.close(); wsRef.current = null }
   }, [tab.pod, tab.iface]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => { setEmptyState('starting') }, [currentTabKey])
+
+  useEffect(() => {
+    if (emptyState !== 'starting') return
+    const t = setTimeout(() => {
+      setEmptyState(prev => prev === 'starting' ? 'waiting' : prev)
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [emptyState, currentTabKey])
+
   // Filtered view
   const displayed = useMemo(() => {
     let list = packets.filter(p => !p.info.endsWith('(raw)'))
-    if (protoFilter !== 'All') list = list.filter(p => p.protocol === protoFilter)
+    if (protoFilter !== 'All') {
+      if (protoFilter === 'HTTP') {
+        list = list.filter(p =>
+          p.protocol === 'HTTP' ||
+          p.protocol.startsWith('HTTP/1') ||
+          p.protocol === 'SSDP' ||
+          p.info.includes('HTTP/1.1') ||
+          p.info.includes('HTTP/1.0')
+        )
+      } else {
+        list = list.filter(p => p.protocol === protoFilter)
+      }
+    }
     if (search) {
       const s = search.toLowerCase()
       list = list.filter(p =>
@@ -1123,22 +1150,30 @@ function CaptureTabPanel({
             <span className="w-12 shrink-0 text-right">Length</span>
             <span className="flex-1">Info</span>
           </div>
-          {/* Spinner banner — shown until the first complete (tshark-decoded) packet arrives */}
-          {displayed.length === 0 && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '12px 16px', color: '#8b949e', fontSize: '13px',
-            }}>
-              <div style={{
-                width: 12, height: 12,
-                border: '2px solid #30363d',
-                borderTopColor: '#58a6ff',
-                borderRadius: '50%',
-                animation: 'spin 0.8s linear infinite',
-              }} />
-              Starting capture...
+          {/* Empty state — 3 phases: starting → waiting → active (filter miss) */}
+          {displayed.length === 0 && (emptyState === 'starting' ? (
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',
+              justifyContent:'center',height:'160px',gap:'10px',color:'#8b949e'}}>
+              <div style={{width:16,height:16,border:'2px solid #30363d',
+                borderTopColor:'#58a6ff',borderRadius:'50%',
+                animation:'spin 0.8s linear infinite'}}/>
+              <span style={{fontSize:13}}>Starting capture...</span>
             </div>
-          )}
+          ) : emptyState === 'waiting' ? (
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',
+              justifyContent:'center',height:'160px',gap:'8px',color:'#6e7681'}}>
+              <span style={{fontSize:20}}>⊙</span>
+              <span style={{fontSize:13}}>Waiting for traffic on {tab.iface}</span>
+              <span style={{fontSize:11,color:'#484f58'}}>
+                tshark is ready, no packets on this interface yet
+              </span>
+            </div>
+          ) : (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',
+              height:'80px',color:'#6e7681',fontSize:13}}>
+              No packets match the current filter
+            </div>
+          ))}
           {/* Virtual rows — minWidth:'100%' lets rows grow wider than the container when
               Info text is long; overflow is visible so the scroll container tracks it */}
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative', minWidth: 820 }}>
