@@ -932,7 +932,7 @@ function CaptureTabPanel({
 
   // Filtered view
   const displayed = useMemo(() => {
-    let list = packets
+    let list = packets.filter(p => !p.info.endsWith('(raw)'))
     if (protoFilter !== 'All') list = list.filter(p => p.protocol === protoFilter)
     if (search) {
       const s = search.toLowerCase()
@@ -1123,6 +1123,22 @@ function CaptureTabPanel({
             <span className="w-12 shrink-0 text-right">Length</span>
             <span className="flex-1">Info</span>
           </div>
+          {/* Spinner banner — shown until the first complete (tshark-decoded) packet arrives */}
+          {displayed.length === 0 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '12px 16px', color: '#8b949e', fontSize: '13px',
+            }}>
+              <div style={{
+                width: 12, height: 12,
+                border: '2px solid #30363d',
+                borderTopColor: '#58a6ff',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }} />
+              Starting capture...
+            </div>
+          )}
           {/* Virtual rows — minWidth:'100%' lets rows grow wider than the container when
               Info text is long; overflow is visible so the scroll container tracks it */}
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative', minWidth: 820 }}>

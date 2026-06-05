@@ -239,15 +239,42 @@ func (m *Manager) doCapture(ctx context.Context, key sessionKey, pod discovery.P
 			sport, _ := strconv.ParseUint(fields["src_port"], 10, 32)
 			dport, _ := strconv.ParseUint(fields["dst_port"], 10, 32)
 
+			// Fallback: fill empty tshark fields from raw frame parser
+			rawSrcIP, rawDstIP, rawSrcPort, rawDstPort, rawProto, rawInfo := extractPacketFields(result.RawBytes)
+			finalSrcIP := fields["src_ip"]
+			if finalSrcIP == "" {
+				finalSrcIP = rawSrcIP
+			}
+			finalDstIP := fields["dst_ip"]
+			if finalDstIP == "" {
+				finalDstIP = rawDstIP
+			}
+			finalProto := fields["protocol"]
+			if finalProto == "" {
+				finalProto = rawProto
+			}
+			finalInfo := fields["info"]
+			if finalInfo == "" {
+				finalInfo = rawInfo
+			}
+			finalSrcPort := uint32(sport)
+			if finalSrcPort == 0 {
+				finalSrcPort = uint32(rawSrcPort)
+			}
+			finalDstPort := uint32(dport)
+			if finalDstPort == 0 {
+				finalDstPort = uint32(rawDstPort)
+			}
+
 			raw := RawPacket{
 				TimestampNs: tsNs,
-				SrcIP:       fields["src_ip"],
-				DstIP:       fields["dst_ip"],
-				SrcPort:     uint32(sport),
-				DstPort:     uint32(dport),
-				Protocol:    fields["protocol"],
+				SrcIP:       finalSrcIP,
+				DstIP:       finalDstIP,
+				SrcPort:     finalSrcPort,
+				DstPort:     finalDstPort,
+				Protocol:    finalProto,
 				Length:      uint32(length),
-				Info:        fields["info"],
+				Info:        finalInfo,
 				Raw:         result.RawBytes,
 			}
 			sess.ring.Push(raw)
