@@ -44,12 +44,20 @@ func (s *Server) GracefulStop() {
 }
 
 func (s *Server) EnableTshark(_ context.Context, req *pb.TsharkRequest) (*pb.TsharkResponse, error) {
-	log.Info().Str("session", req.GetSessionId()).Msg("EnableTshark called (stub)")
+	if err := s.manager.EnableTshark(req.GetSessionId()); err != nil {
+		log.Warn().Err(err).Str("session", req.GetSessionId()).Msg("EnableTshark failed")
+		return &pb.TsharkResponse{Ok: false}, nil
+	}
+	log.Info().Str("session", req.GetSessionId()).Msg("tshark enabled")
 	return &pb.TsharkResponse{Ok: true}, nil
 }
 
 func (s *Server) DisableTshark(_ context.Context, req *pb.TsharkRequest) (*pb.TsharkResponse, error) {
-	log.Info().Str("session", req.GetSessionId()).Msg("DisableTshark called (stub)")
+	if err := s.manager.DisableTshark(req.GetSessionId()); err != nil {
+		log.Warn().Err(err).Str("session", req.GetSessionId()).Msg("DisableTshark failed")
+		return &pb.TsharkResponse{Ok: false}, nil
+	}
+	log.Info().Str("session", req.GetSessionId()).Msg("tshark disabled")
 	return &pb.TsharkResponse{Ok: true}, nil
 }
 

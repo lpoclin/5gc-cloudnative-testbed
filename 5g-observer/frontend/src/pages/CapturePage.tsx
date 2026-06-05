@@ -41,7 +41,8 @@ type ConnStatus = 'idle' | 'connecting' | 'live' | 'paused' | 'error' | 'stopped
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const RING_MAX  = 10_000
+const RING_MAX         = 10_000
+const MAX_CAPTURE_TABS = 8
 const PROTOCOLS = ['All', 'GTP-U', 'PFCP', 'HTTP/2', 'NGAP', 'SCTP', 'DNS', 'TCP', 'UDP'] as const
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -871,13 +872,14 @@ function CaptureTabPanel({
   const bufferRef   = useRef<LivePacket[]>([])
   const tableRef    = useRef<HTMLDivElement>(null)
 
-  const [paused,      setPaused]      = useState(false)
-  const [protoFilter, setProtoFilter] = useState<string>('All')
-  const [search,      setSearch]      = useState('')
-  const [selectedNo,  setSelectedNo]  = useState<number | null>(null)
-  const [rangeFrom,   setRangeFrom]   = useState('')
-  const [rangeTo,     setRangeTo]     = useState('')
-  const [status,      setStatus]      = useState<ConnStatus>('idle')
+  const [paused,       setPaused]      = useState(false)
+  const [protoFilter,  setProtoFilter] = useState<string>('All')
+  const [search,       setSearch]      = useState('')
+  const [selectedNo,   setSelectedNo]  = useState<number | null>(null)
+  const [rangeFrom,    setRangeFrom]   = useState('')
+  const [rangeTo,      setRangeTo]     = useState('')
+  const [status,       setStatus]      = useState<ConnStatus>('idle')
+  const [tsharkReady,  setTsharkReady] = useState(false)
 
   const reportStatus = useCallback((s: ConnStatus) => {
     setStatus(s)
@@ -889,6 +891,7 @@ function CaptureTabPanel({
     reportStatus('connecting')
     setPackets([])
     setCaptureTs(0)
+    setTsharkReady(false)
     counterRef.current = 0
     bufferRef.current  = []
     pausedRef.current  = false
@@ -920,6 +923,7 @@ function CaptureTabPanel({
         rawHex: p.raw ? base64ToHex(p.raw) : undefined,
       }))
       setCaptureTs(prev => prev === 0 && parsed.length > 0 ? Number(parsed[0].ts) : prev)
+      if (!tsharkReady && parsed.some(p => p.protocol !== '')) setTsharkReady(true)
       if (pausedRef.current) {
         bufferRef.current = [...bufferRef.current, ...parsed].slice(-RING_MAX)
       } else {
@@ -932,6 +936,8 @@ function CaptureTabPanel({
   // Filtered view
   const displayed = useMemo(() => {
     let list = packets
+    // Hide raw-bytes-only packets (empty protocol) until tshark has started decoding
+    if (!tsharkReady) list = list.filter(p => p.protocol !== '')
     if (protoFilter !== 'All') list = list.filter(p => p.protocol === protoFilter)
     if (search) {
       const s = search.toLowerCase()
@@ -940,7 +946,7 @@ function CaptureTabPanel({
         p.info.toLowerCase().includes(s) || p.protocol.toLowerCase().includes(s))
     }
     return list
-  }, [packets, protoFilter, search])
+  }, [packets, protoFilter, search, tsharkReady])
 
   // Export range
   const derivedFrom = useMemo(() =>
@@ -1078,7 +1084,15 @@ function CaptureTabPanel({
           </a>
         </div>
         <div className="flex-1" />
-        <div className="flex items-center shrink-0">{statusBadge()}</div>
+        <div className="flex items-center gap-2 shrink-0">
+          {status === 'live' && !tsharkReady && (
+            <span className="px-2 py-1 rounded text-xs font-bold animate-pulse"
+              style={{ background: '#0d1f3c', border: '1px solid #388bfd', color: '#58a6ff' }}>
+              Starting tshark…
+            </span>
+          )}
+          {statusBadge()}
+        </div>
       </div>
 
       {/* FILTER BAR */}
@@ -1241,7 +1255,7 @@ export default function CapturePage({
   const addTab = useCallback((pod: string, iface: string) => {
     const existing = tabs.find(t => t.pod === pod && t.iface === iface)
     if (existing) { onActiveTabChange(existing.id); return }
-    if (tabs.length >= 8) return
+    if (tabs.length >= MAX_CAPTURE_TABS) return
     const node       = (nodes as any[]).find(n => n.podName === pod)
     const podDisplay = node?.displayName ?? pod.split('-').filter((s: string) => s !== 'free5gc' && !/^[0-9a-f]{5,}$/.test(s)).slice(0, 2).join('-')
     const id         = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -1328,12 +1342,12 @@ export default function CapturePage({
 
         {/* Add tab button */}
         <button
-          onClick={() => { if (tabs.length < 8) setShowAdd(v => !v) }}
-          title={tabs.length >= 8 ? 'Maximum 8 tabs reached' : 'Add capture tab'}
+          onClick={() => { if (tabs.length < MAX_CAPTURE_TABS) setShowAdd(v => !v) }}
+          title={tabs.length >= MAX_CAPTURE_TABS ? `Maximum ${MAX_CAPTURE_TABS} tabs reached` : 'Add capture tab'}
           className="flex items-center shrink-0"
           style={{
-            color:        tabs.length >= 8 ? '#4a4a4a' : '#58a6ff',
-            cursor:       tabs.length >= 8 ? 'not-allowed' : 'pointer',
+            color:        tabs.length >= MAX_CAPTURE_TABS ? '#4a4a4a' : '#58a6ff',
+            cursor:       tabs.length >= MAX_CAPTURE_TABS ? 'not-allowed' : 'pointer',
             fontSize:     16,
             fontWeight:   'bold',
             padding:      '2px 8px',
@@ -1342,13 +1356,13 @@ export default function CapturePage({
             background:   'transparent',
           }}
           onMouseEnter={e => {
-            if (tabs.length >= 8) return
+            if (tabs.length >= MAX_CAPTURE_TABS) return
             const el = e.currentTarget as HTMLElement
             el.style.background = 'rgba(88,166,255,0.15)'
             el.style.color = '#79c0ff'
           }}
           onMouseLeave={e => {
-            if (tabs.length >= 8) return
+            if (tabs.length >= MAX_CAPTURE_TABS) return
             const el = e.currentTarget as HTMLElement
             el.style.background = 'transparent'
             el.style.color = '#58a6ff'

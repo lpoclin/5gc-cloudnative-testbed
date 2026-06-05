@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -23,25 +24,36 @@ type sessionKey struct {
 	iface  string
 }
 
+// sessionEntry links a string session ID to the session and its key.
+type sessionEntry struct {
+	sess *session
+	key  sessionKey
+}
+
 type session struct {
-	cancel  context.CancelFunc
-	ring    *RingBuffer
-	podName string
-	ns      string
-	node    string
+	cancel        context.CancelFunc
+	ring          *RingBuffer
+	podName       string
+	ns            string
+	node          string
+	tsharkEnabled *atomic.Bool
+	tsharkCancel  context.CancelFunc // cancels the current run ctx; triggers restart
+	mu            sync.Mutex         // protects tsharkCancel
 }
 
 // Manager manages one capture goroutine per (pod, interface).
 type Manager struct {
-	mu       sync.Mutex
-	sessions map[sessionKey]*session
-	grpc     *agentgrpc.Client
+	mu           sync.Mutex
+	sessions     map[sessionKey]*session
+	sessionIndex map[string]*sessionEntry // "ns/pod/iface" → entry
+	grpc         *agentgrpc.Client
 }
 
 func NewManager(g *agentgrpc.Client) *Manager {
 	m := &Manager{
-		sessions: make(map[sessionKey]*session),
-		grpc:     g,
+		sessions:     make(map[sessionKey]*session),
+		sessionIndex: make(map[string]*sessionEntry),
+		grpc:         g,
 	}
 	go func() {
 		t := time.NewTicker(60 * time.Second)
@@ -78,6 +90,8 @@ func (m *Manager) Reconcile(ctx context.Context, pods []discovery.PodInfo) {
 			log.Info().Str("uid", key.podUID[:8]).Str("iface", key.iface).Msg("stopping capture")
 			log.Debug().Str("pod", sess.podName).Str("iface", key.iface).Int("goroutines", runtime.NumGoroutine()).Msg("session cancelled")
 			sess.cancel()
+			sid := SessionID(sess.ns, sess.podName, key.iface)
+			delete(m.sessionIndex, sid)
 			delete(m.sessions, key)
 		}
 	}
@@ -90,13 +104,16 @@ func (m *Manager) Reconcile(ctx context.Context, pods []discovery.PodInfo) {
 		sessCtx, cancel := context.WithCancel(ctx)
 		ring := NewRingBuffer(ringCapacity)
 		sess := &session{
-			cancel:  cancel,
-			ring:    ring,
-			podName: pod.Name,
-			ns:      pod.Namespace,
-			node:    pod.NodeName,
+			cancel:        cancel,
+			ring:          ring,
+			podName:       pod.Name,
+			ns:            pod.Namespace,
+			node:          pod.NodeName,
+			tsharkEnabled: new(atomic.Bool), // false by default — tshark starts on demand
 		}
 		m.sessions[key] = sess
+		sid := SessionID(pod.Namespace, pod.Name, key.iface)
+		m.sessionIndex[sid] = &sessionEntry{sess: sess, key: key}
 
 		go m.runCapture(sessCtx, key, pod, sess)
 		log.Debug().Str("pod", pod.Name).Str("iface", key.iface).Int("goroutines", runtime.NumGoroutine()).Msg("session started")
@@ -108,14 +125,40 @@ func (m *Manager) Reconcile(ctx context.Context, pods []discovery.PodInfo) {
 		Msg("reconcile tick")
 }
 
-func (m *Manager) runCapture(ctx context.Context, key sessionKey, pod discovery.PodInfo, sess *session) {
+// runCapture restarts doCapture whenever tsharkEnabled changes (via tsharkCancel).
+func (m *Manager) runCapture(sessCtx context.Context, key sessionKey, pod discovery.PodInfo, sess *session) {
+	for {
+		runCtx, runCancel := context.WithCancel(sessCtx)
+		sess.mu.Lock()
+		sess.tsharkCancel = runCancel
+		sess.mu.Unlock()
+
+		m.doCapture(runCtx, key, pod, sess)
+		runCancel()
+
+		select {
+		case <-sessCtx.Done():
+			return
+		default:
+		}
+		// Debounce rapid toggles; also prevents tight loop if tcpdump fails immediately.
+		select {
+		case <-sessCtx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+func (m *Manager) doCapture(ctx context.Context, key sessionKey, pod discovery.PodInfo, sess *session) {
 	log.Info().
 		Str("pod", pod.Name).
 		Str("ns", pod.Namespace).
 		Str("iface", key.iface).
+		Bool("tshark", sess.tsharkEnabled.Load()).
 		Msg("capture session starting")
 
-	ch, err := RunCapture(ctx, key.podUID, pod.ContainerID, key.iface)
+	ch, err := RunCapture(ctx, key.podUID, pod.ContainerID, key.iface, sess.tsharkEnabled)
 	if err != nil {
 		log.Error().Err(err).Str("pod", pod.Name).Str("iface", key.iface).Msg("capture start failed")
 		return
@@ -146,6 +189,34 @@ func (m *Manager) runCapture(ctx context.Context, key sessionKey, pod discovery.
 				flush()
 				return
 			}
+
+			if result.Line == "" {
+				// tshark-off: raw frame with pcap timestamp, no decoded fields
+				if result.TimestampNs == 0 {
+					continue
+				}
+				raw := RawPacket{
+					TimestampNs: result.TimestampNs,
+					Length:      uint32(len(result.RawBytes)),
+					Raw:         result.RawBytes,
+				}
+				sess.ring.Push(raw)
+				batch = append(batch, &pb.Packet{
+					TimestampNs:   raw.TimestampNs,
+					Length:        raw.Length,
+					Raw:           raw.Raw,
+					InterfaceName: key.iface,
+					PodName:       pod.Name,
+					Namespace:     pod.Namespace,
+					Node:          pod.NodeName,
+				})
+				if len(batch) >= 50 {
+					flush()
+				}
+				continue
+			}
+
+			// tshark-on: parse decoded fields
 			fields, ok := ParseTsharkLine(result.Line)
 			if !ok {
 				continue
@@ -199,6 +270,50 @@ func (m *Manager) StopAll() {
 	for _, sess := range m.sessions {
 		sess.cancel()
 	}
+}
+
+// EnableTshark starts tshark for the given session (identified by "ns/pod/iface").
+// If tshark was already enabled this is a no-op.
+func (m *Manager) EnableTshark(sessionID string) error {
+	m.mu.Lock()
+	entry := m.sessionIndex[sessionID]
+	m.mu.Unlock()
+	if entry == nil {
+		return fmt.Errorf("session %q not found", sessionID)
+	}
+	if !entry.sess.tsharkEnabled.Swap(true) {
+		// was false → trigger restart with tshark-on
+		entry.sess.mu.Lock()
+		cancel := entry.sess.tsharkCancel
+		entry.sess.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		log.Info().Str("session", sessionID).Msg("tshark enable: restart triggered")
+	}
+	return nil
+}
+
+// DisableTshark stops tshark for the given session.
+// If tshark was already disabled this is a no-op.
+func (m *Manager) DisableTshark(sessionID string) error {
+	m.mu.Lock()
+	entry := m.sessionIndex[sessionID]
+	m.mu.Unlock()
+	if entry == nil {
+		return fmt.Errorf("session %q not found", sessionID)
+	}
+	if entry.sess.tsharkEnabled.Swap(false) {
+		// was true → trigger restart with tshark-off
+		entry.sess.mu.Lock()
+		cancel := entry.sess.tsharkCancel
+		entry.sess.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		log.Info().Str("session", sessionID).Msg("tshark disable: restart triggered")
+	}
+	return nil
 }
 
 // SessionID builds a stable session ID string.

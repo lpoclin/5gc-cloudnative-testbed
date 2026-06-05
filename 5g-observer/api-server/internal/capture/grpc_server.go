@@ -502,6 +502,67 @@ func (s *Server) getAgentClient(addr string) (pb.CaptureAgentControlClient, erro
 	return pb.NewCaptureAgentControlClient(conn), nil
 }
 
+// GetWildcardSubCount returns the number of active wildcard subscribers for pod+iface.
+func (s *Server) GetWildcardSubCount(pod, iface string) int {
+	key := wildcardKey{PodName: pod, Iface: iface}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.wildcardSubs[key])
+}
+
+// GetSubCount returns the number of active exact-key subscribers for a session.
+func (s *Server) GetSubCount(key SessionKey) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.subs[key])
+}
+
+// CallEnableTshark signals the capture-agent for pod+iface to start tshark.
+// Must be called in its own goroutine — makes a blocking gRPC call.
+func (s *Server) CallEnableTshark(pod, iface, sessionID string) {
+	addr := s.getCaptureAgentAddr(pod, iface)
+	if addr == "" {
+		log.Warn().Str("pod", pod).Str("iface", iface).Msg("callEnableTshark: no agent addr registered")
+		return
+	}
+	client, err := s.getAgentClient(addr)
+	if err != nil {
+		log.Error().Err(err).Str("addr", addr).Msg("callEnableTshark: client error")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resp, err := client.EnableTshark(ctx, &pb.TsharkRequest{SessionId: sessionID})
+	if err != nil {
+		log.Error().Err(err).Str("session", sessionID).Msg("callEnableTshark: rpc failed")
+		return
+	}
+	log.Info().Str("session", sessionID).Bool("ok", resp.Ok).Msg("tshark enabled on agent")
+}
+
+// CallDisableTshark signals the capture-agent for pod+iface to stop tshark.
+// Must be called in its own goroutine — makes a blocking gRPC call.
+func (s *Server) CallDisableTshark(pod, iface, sessionID string) {
+	addr := s.getCaptureAgentAddr(pod, iface)
+	if addr == "" {
+		log.Warn().Str("pod", pod).Str("iface", iface).Msg("callDisableTshark: no agent addr registered")
+		return
+	}
+	client, err := s.getAgentClient(addr)
+	if err != nil {
+		log.Error().Err(err).Str("addr", addr).Msg("callDisableTshark: client error")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resp, err := client.DisableTshark(ctx, &pb.TsharkRequest{SessionId: sessionID})
+	if err != nil {
+		log.Error().Err(err).Str("session", sessionID).Msg("callDisableTshark: rpc failed")
+		return
+	}
+	log.Info().Str("session", sessionID).Bool("ok", resp.Ok).Msg("tshark disabled on agent")
+}
+
 // PingCaptureAgent checks connectivity to the capture-agent at addr.
 func (s *Server) PingCaptureAgent(addr string) error {
 	client, err := s.getAgentClient(addr)

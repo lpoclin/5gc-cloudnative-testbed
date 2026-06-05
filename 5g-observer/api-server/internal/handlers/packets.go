@@ -2,14 +2,29 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 
 	"github.com/lpoclin/5g-observer/api-server/internal/capture"
 )
+
+// getDefaultNamespace returns the first namespace from TARGET_NAMESPACES env, or "free5gc".
+func getDefaultNamespace() string {
+	ns := os.Getenv("TARGET_NAMESPACES")
+	if idx := strings.Index(ns, ","); idx >= 0 {
+		return ns[:idx]
+	}
+	if ns != "" {
+		return ns
+	}
+	return "free5gc"
+}
 
 // PacketsHandler streams decoded packets from the gRPC fan-out server to WebSocket.
 type PacketsHandler struct {
@@ -40,7 +55,21 @@ func (h *PacketsHandler) StreamPackets(c *gin.Context) {
 		Msg("packet ws: subscribing to capture session")
 
 	ch, unsub := h.srv.RegisterSubscriber(key)
-	defer unsub()
+
+	sessionID := fmt.Sprintf("%s/%s/%s", getDefaultNamespace(), pod, iface)
+
+	if h.srv.GetSubCount(key) == 1 {
+		log.Info().Str("session", sessionID).Msg("first subscriber: enabling tshark")
+		go h.srv.CallEnableTshark(pod, iface, sessionID)
+	}
+
+	defer func() {
+		unsub()
+		if h.srv.GetSubCount(key) == 0 {
+			log.Info().Str("session", sessionID).Msg("last subscriber gone: disabling tshark")
+			go h.srv.CallDisableTshark(pod, iface, sessionID)
+		}
+	}()
 
 	log.Info().Str("node", node).Str("pod", pod).Str("iface", iface).Msg("packet ws stream started")
 
@@ -126,7 +155,24 @@ func (h *PacketsHandler) StreamPacketsQuery(c *gin.Context) {
 	defer conn.Close()
 
 	ch, unsub := h.srv.RegisterWildcardSubscriber(pod, iface)
-	defer unsub()
+
+	ns := getDefaultNamespace()
+	sessionID := fmt.Sprintf("%s/%s/%s", ns, pod, iface)
+
+	// 0→1: first viewer — enable tshark on capture-agent
+	if h.srv.GetWildcardSubCount(pod, iface) == 1 {
+		log.Info().Str("session", sessionID).Msg("first subscriber: enabling tshark")
+		go h.srv.CallEnableTshark(pod, iface, sessionID)
+	}
+
+	defer func() {
+		unsub()
+		// N→0: last viewer left — disable tshark
+		if h.srv.GetWildcardSubCount(pod, iface) == 0 {
+			log.Info().Str("session", sessionID).Msg("last subscriber gone: disabling tshark")
+			go h.srv.CallDisableTshark(pod, iface, sessionID)
+		}
+	}()
 
 	log.Info().Str("pod", pod).Str("iface", iface).Msg("packet ws query stream started")
 

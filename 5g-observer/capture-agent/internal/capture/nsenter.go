@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog/log"
 )
@@ -70,16 +71,18 @@ func findPodPID(podUID, containerID string) (int, error) {
 }
 
 // CaptureResult is a decoded packet line from tshark with raw frame bytes.
+// When tshark is disabled, Line is "" and TimestampNs carries the pcap timestamp.
 type CaptureResult struct {
-	Line     string
-	RawBytes []byte // raw Ethernet/IP frame bytes for sharkd decode; nil if unavailable
+	Line        string
+	RawBytes    []byte // raw Ethernet/IP frame bytes for sharkd decode; nil if unavailable
+	TimestampNs int64  // set in tshark-off mode; zero in tshark-on mode (tshark provides ts)
 }
 
-// RunCapture starts tcpdump | tshark in the pod network namespace.
-// containerID is the containerd container ID (containerd://SHA256) used to
-// disambiguate the main container from the pause/sandbox container in cgroupv2.
-// Decoded lines are sent on the returned channel until ctx is cancelled.
-func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan CaptureResult, error) {
+// RunCapture starts capture in the pod network namespace.
+// When tsharkEnabled is true: runs tcpdump | tshark, sends parsed field lines.
+// When tsharkEnabled is false: runs tcpdump only, sends raw frames with pcap timestamps.
+// The flag is read once at startup; call again (via restart loop) to change mode.
+func RunCapture(ctx context.Context, podUID, containerID, iface string, tsharkEnabled *atomic.Bool) (<-chan CaptureResult, error) {
 	pid, err := findPodPID(podUID, containerID)
 	if err != nil {
 		return nil, fmt.Errorf("find pod PID: %w", err)
@@ -94,50 +97,72 @@ func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan 
 
 	ch := make(chan CaptureResult, 512)
 
+	tcpdumpArgs := []string{
+		fmt.Sprintf("--net=%s", netNS),
+		"--",
+		"tcpdump",
+		"-i", iface,
+		"-w", "-",
+		"--immediate-mode",
+		"-s", "0",
+	}
+
+	nsenterBin, _ := exec.LookPath("nsenter")
+	if nsenterBin == "" {
+		nsenterBin = "/usr/bin/nsenter"
+	}
+
+	if !tsharkEnabled.Load() {
+		// tshark-off: tcpdump only; send raw frames with pcap timestamps
+		go func() {
+			defer close(ch)
+			tcpdump := exec.CommandContext(ctx, nsenterBin, tcpdumpArgs...)
+			tcpdump.Env = append(os.Environ())
+			tcpdumpStdout, err := tcpdump.StdoutPipe()
+			if err != nil {
+				log.Error().Err(err).Str("iface", iface).Msg("tcpdump stdout pipe (no-tshark)")
+				return
+			}
+			if err := tcpdump.Start(); err != nil {
+				log.Error().Err(err).Str("iface", iface).Msg("tcpdump start (no-tshark)")
+				return
+			}
+			log.Info().Str("uid", podUID).Str("iface", iface).Msg("capture running (tshark-off)")
+			defer func() {
+				tcpdump.Process.Kill()
+				tcpdump.Wait()
+				log.Debug().Str("uid", podUID).Str("iface", iface).Msg("tcpdump (no-tshark) exited")
+			}()
+			parsePcapFramesDirect(ctx, tcpdumpStdout, ch)
+		}()
+		return ch, nil
+	}
+
+	// tshark-on: tcpdump | tshark pipeline
+	tsharkArgs := []string{
+		"-r", "-",
+		"-l",
+		"-T", "fields",
+		"-e", "frame.time_epoch",
+		"-e", "ip.src",
+		"-e", "ip.dst",
+		"-e", "tcp.srcport",
+		"-e", "udp.srcport",
+		"-e", "tcp.dstport",
+		"-e", "udp.dstport",
+		"-e", "_ws.col.Protocol",
+		"-e", "frame.len",
+		"-e", "_ws.col.Info",
+		"-E", "separator=|",
+	}
+
+	tsharkBin, _ := exec.LookPath("tshark")
+	if tsharkBin == "" {
+		tsharkBin = filepath.Join("/usr/bin", "tshark")
+	}
+
 	go func() {
 		defer close(ch)
-
-		// Run: nsenter --net=<netns> -- tcpdump -i <iface> -w - |
-		//      tshark -r - -T fields -e frame.time_epoch -e ip.src -e ip.dst
-		//              -e tcp.srcport -e udp.srcport -e tcp.dstport -e udp.dstport
-		//              -e _ws.col.Protocol -e frame.len -e _ws.col.Info
-
-		tcpdumpArgs := []string{
-			fmt.Sprintf("--net=%s", netNS),
-			"--",
-			"tcpdump",
-			"-i", iface,
-			"-w", "-",
-			"--immediate-mode",
-			"-s", "0",
-		}
-
-		tsharkArgs := []string{
-			"-r", "-",
-			"-l",
-			"-T", "fields",
-			"-e", "frame.time_epoch",
-			"-e", "ip.src",
-			"-e", "ip.dst",
-			"-e", "tcp.srcport",
-			"-e", "udp.srcport",
-			"-e", "tcp.dstport",
-			"-e", "udp.dstport",
-			"-e", "_ws.col.Protocol",
-			"-e", "frame.len",
-			"-e", "_ws.col.Info",
-			"-E", "separator=|",
-		}
-
-		// Find binaries
-		nsenterBin, _ := exec.LookPath("nsenter")
-		if nsenterBin == "" {
-			nsenterBin = "/usr/bin/nsenter"
-		}
-		tsharkBin, _ := exec.LookPath("tshark")
-		if tsharkBin == "" {
-			tsharkBin = filepath.Join("/usr/bin", "tshark")
-		}
 
 		tcpdump := exec.CommandContext(ctx, nsenterBin, tcpdumpArgs...)
 		tcpdump.Env = append(os.Environ())
@@ -159,7 +184,6 @@ func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan 
 			return
 		}
 
-		// Split the raw pcap stream: one copy goes to tshark, another to pcap frame parser
 		pcapPipeR, pcapPipeW := io.Pipe()
 		teeR := io.TeeReader(tcpdumpStdout, pcapPipeW)
 		tshark.Stdin = teeR
@@ -185,13 +209,14 @@ func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan 
 			pcapPipeW.Close()
 			return
 		}
+		log.Info().Str("uid", podUID).Str("iface", iface).Msg("capture running (tshark-on)")
 
 		defer func() {
 			log.Debug().Str("uid", podUID).Str("iface", iface).Int("goroutines", runtime.NumGoroutine()).Msg("runcapture exiting, cleanup starting")
 			tcpdump.Process.Kill()
 			tshark.Process.Kill()
 			pcapPipeW.Close()
-			closeRawCh() // Fix 2: ensure rawCh is closed when main goroutine exits
+			closeRawCh()
 			tcpdump.Wait()
 			tshark.Wait()
 			log.Debug().Str("uid", podUID).Str("iface", iface).Int("goroutines", runtime.NumGoroutine()).Msg("runcapture exited")
@@ -200,7 +225,6 @@ func RunCapture(ctx context.Context, podUID, containerID, iface string) (<-chan 
 		scanner := bufio.NewScanner(tsharkOut)
 		scanner.Buffer(make([]byte, 64*1024), 64*1024)
 		for scanner.Scan() {
-			// Receive raw bytes for this frame (same sequential order as tshark output)
 			var rawBytes []byte
 			select {
 			case <-ctx.Done():
@@ -265,6 +289,57 @@ func epochStringToNs(epochStr string) int64 {
 		tsNs += nsec
 	}
 	return tsNs
+}
+
+// parsePcapFramesDirect reads a libpcap byte stream and sends CaptureResult
+// (with TimestampNs and RawBytes, empty Line) for each frame. Used in tshark-off mode.
+func parsePcapFramesDirect(ctx context.Context, r io.Reader, ch chan<- CaptureResult) {
+	var magic [4]byte
+	if _, err := io.ReadFull(r, magic[:]); err != nil {
+		return
+	}
+	magicNum := binary.LittleEndian.Uint32(magic[:])
+	bigEndian := magicNum == 0xd4c3b2a1 || magicNum == 0x4d3cb2a1
+	isNsec := magicNum == 0xa1b23c4d || magicNum == 0x4d3cb2a1
+	if magicNum != 0xa1b2c3d4 && magicNum != 0xa1b23c4d && !bigEndian {
+		log.Warn().Uint32("magic", magicNum).Msg("parsePcapFramesDirect: unrecognized magic")
+		return
+	}
+	var rest [20]byte
+	if _, err := io.ReadFull(r, rest[:]); err != nil {
+		return
+	}
+	var hdr [16]byte
+	for {
+		if _, err := io.ReadFull(r, hdr[:]); err != nil {
+			return
+		}
+		var tsSec, tsSubSec, inclLen uint32
+		if bigEndian {
+			tsSec    = binary.BigEndian.Uint32(hdr[0:4])
+			tsSubSec = binary.BigEndian.Uint32(hdr[4:8])
+			inclLen  = binary.BigEndian.Uint32(hdr[8:12])
+		} else {
+			tsSec    = binary.LittleEndian.Uint32(hdr[0:4])
+			tsSubSec = binary.LittleEndian.Uint32(hdr[4:8])
+			inclLen  = binary.LittleEndian.Uint32(hdr[8:12])
+		}
+		var tsNs int64
+		if isNsec {
+			tsNs = int64(tsSec)*1_000_000_000 + int64(tsSubSec)
+		} else {
+			tsNs = int64(tsSec)*1_000_000_000 + int64(tsSubSec)*1_000
+		}
+		data := make([]byte, inclLen)
+		if _, err := io.ReadFull(r, data); err != nil {
+			return
+		}
+		select {
+		case ch <- CaptureResult{TimestampNs: tsNs, RawBytes: data}:
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // parsePcapFrames reads a libpcap byte stream and sends raw packet bytes for
