@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,11 +72,18 @@ func findPodPID(podUID, containerID string) (int, error) {
 }
 
 // CaptureResult is a decoded packet line from tshark with raw frame bytes.
-// When tshark is disabled, Line is "" and TimestampNs carries the pcap timestamp.
+// When tshark is disabled, Line is "" and the parsed L3/L4 fields are populated
+// from extractPacketFields; TimestampNs carries the pcap record timestamp.
 type CaptureResult struct {
 	Line        string
 	RawBytes    []byte // raw Ethernet/IP frame bytes for sharkd decode; nil if unavailable
 	TimestampNs int64  // set in tshark-off mode; zero in tshark-on mode (tshark provides ts)
+	SrcIP       string
+	DstIP       string
+	SrcPort     uint16
+	DstPort     uint16
+	Protocol    string
+	Info        string
 }
 
 // RunCapture starts capture in the pod network namespace.
@@ -291,6 +299,138 @@ func epochStringToNs(epochStr string) int64 {
 	return tsNs
 }
 
+func formatIPv6(b []byte) string {
+	return net.IP(b).String()
+}
+
+// extractPacketFields parses an Ethernet frame and returns L3/L4 fields.
+// Handles IPv4, IPv6, ARP, 802.1Q VLAN tags, and unknown EtherTypes.
+func extractPacketFields(data []byte) (srcIP, dstIP string, srcPort, dstPort uint16, proto, info string) {
+	if len(data) < 14 {
+		return
+	}
+
+	etherType := binary.BigEndian.Uint16(data[12:14])
+	offset := 14 // start of layer-3 payload
+
+	// 802.1Q VLAN tag — shifts everything by 4 bytes
+	if etherType == 0x8100 {
+		if len(data) < 18 {
+			return
+		}
+		etherType = binary.BigEndian.Uint16(data[16:18])
+		offset = 18
+	}
+
+	switch etherType {
+	case 0x0800: // IPv4
+		if len(data) < offset+20 {
+			return
+		}
+		if data[offset]>>4 != 4 {
+			return
+		}
+		ihl := int(data[offset]&0x0F) * 4
+		if offset+ihl > len(data) {
+			return
+		}
+		protocol := data[offset+9]
+		srcIP = fmt.Sprintf("%d.%d.%d.%d", data[offset+12], data[offset+13], data[offset+14], data[offset+15])
+		dstIP = fmt.Sprintf("%d.%d.%d.%d", data[offset+16], data[offset+17], data[offset+18], data[offset+19])
+		portOff := offset + ihl
+		switch protocol {
+		case 0x06: // TCP
+			proto = "TCP"
+			if portOff+4 <= len(data) {
+				srcPort = binary.BigEndian.Uint16(data[portOff:])
+				dstPort = binary.BigEndian.Uint16(data[portOff+2:])
+				info = fmt.Sprintf("%d → %d", srcPort, dstPort)
+			}
+		case 0x11: // UDP
+			proto = "UDP"
+			if portOff+4 <= len(data) {
+				srcPort = binary.BigEndian.Uint16(data[portOff:])
+				dstPort = binary.BigEndian.Uint16(data[portOff+2:])
+				info = fmt.Sprintf("%d → %d", srcPort, dstPort)
+				if srcPort == 8805 || dstPort == 8805 {
+					proto = "PFCP"
+					info = "PFCP (raw)"
+				} else if srcPort == 2152 || dstPort == 2152 {
+					proto = "GTP-U"
+					info = "GTP-U (raw)"
+				}
+			}
+		case 0x84: // SCTP
+			proto = "SCTP"
+			if portOff+4 <= len(data) {
+				srcPort = binary.BigEndian.Uint16(data[portOff:])
+				dstPort = binary.BigEndian.Uint16(data[portOff+2:])
+				info = fmt.Sprintf("SCTP %d → %d", srcPort, dstPort)
+			}
+		case 0x01: // ICMP
+			proto = "ICMP"
+			info = "ICMP"
+		default:
+			proto = fmt.Sprintf("IPv4(0x%02x)", protocol)
+		}
+
+	case 0x86DD: // IPv6
+		if len(data) < offset+40 {
+			return
+		}
+		if data[offset]>>4 != 6 {
+			return
+		}
+		nextHeader := data[offset+6]
+		srcIP = formatIPv6(data[offset+8 : offset+24])
+		dstIP = formatIPv6(data[offset+24 : offset+40])
+		portOff := offset + 40
+		switch nextHeader {
+		case 0x06: // TCP
+			proto = "TCP"
+			if portOff+4 <= len(data) {
+				srcPort = binary.BigEndian.Uint16(data[portOff:])
+				dstPort = binary.BigEndian.Uint16(data[portOff+2:])
+				info = fmt.Sprintf("%d → %d", srcPort, dstPort)
+			}
+		case 0x11: // UDP
+			proto = "UDP"
+			if portOff+4 <= len(data) {
+				srcPort = binary.BigEndian.Uint16(data[portOff:])
+				dstPort = binary.BigEndian.Uint16(data[portOff+2:])
+				info = fmt.Sprintf("%d → %d", srcPort, dstPort)
+				if srcPort == 8805 || dstPort == 8805 {
+					proto = "PFCP"
+					info = "PFCP (raw)"
+				} else if srcPort == 2152 || dstPort == 2152 {
+					proto = "GTP-U"
+					info = "GTP-U (raw)"
+				}
+			}
+		case 0x3A: // ICMPv6
+			proto = "ICMPv6"
+			info = "ICMPv6"
+		default:
+			proto = fmt.Sprintf("IPv6(0x%02x)", nextHeader)
+		}
+
+	case 0x0806: // ARP
+		proto = "ARP"
+		if offset+28 <= len(data) {
+			senderIP := fmt.Sprintf("%d.%d.%d.%d", data[offset+14], data[offset+15], data[offset+16], data[offset+17])
+			targetIP := fmt.Sprintf("%d.%d.%d.%d", data[offset+24], data[offset+25], data[offset+26], data[offset+27])
+			info = fmt.Sprintf("Who has %s? Tell %s", targetIP, senderIP)
+			srcIP = senderIP
+			dstIP = targetIP
+		}
+
+	default:
+		proto = fmt.Sprintf("0x%04X", etherType)
+		info = "Ethernet II"
+	}
+	return
+}
+
 // parsePcapFramesDirect reads a libpcap byte stream and sends CaptureResult
 // (with TimestampNs and RawBytes, empty Line) for each frame. Used in tshark-off mode.
 func parsePcapFramesDirect(ctx context.Context, r io.Reader, ch chan<- CaptureResult) {
@@ -334,8 +474,18 @@ func parsePcapFramesDirect(ctx context.Context, r io.Reader, ch chan<- CaptureRe
 		if _, err := io.ReadFull(r, data); err != nil {
 			return
 		}
+		srcIP, dstIP, srcPort, dstPort, proto, info := extractPacketFields(data)
 		select {
-		case ch <- CaptureResult{TimestampNs: tsNs, RawBytes: data}:
+		case ch <- CaptureResult{
+			TimestampNs: tsNs,
+			RawBytes:    data,
+			SrcIP:       srcIP,
+			DstIP:       dstIP,
+			SrcPort:     srcPort,
+			DstPort:     dstPort,
+			Protocol:    proto,
+			Info:        info,
+		}:
 		case <-ctx.Done():
 			return
 		}

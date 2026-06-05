@@ -191,19 +191,31 @@ func (m *Manager) doCapture(ctx context.Context, key sessionKey, pod discovery.P
 			}
 
 			if result.Line == "" {
-				// tshark-off: raw frame with pcap timestamp, no decoded fields
+				// tshark-off: raw frame with pcap timestamp + fields from extractPacketFields
 				if result.TimestampNs == 0 {
 					continue
 				}
 				raw := RawPacket{
 					TimestampNs: result.TimestampNs,
+					SrcIP:       result.SrcIP,
+					DstIP:       result.DstIP,
+					SrcPort:     uint32(result.SrcPort),
+					DstPort:     uint32(result.DstPort),
+					Protocol:    result.Protocol,
 					Length:      uint32(len(result.RawBytes)),
+					Info:        result.Info,
 					Raw:         result.RawBytes,
 				}
 				sess.ring.Push(raw)
 				batch = append(batch, &pb.Packet{
 					TimestampNs:   raw.TimestampNs,
+					SrcIp:         raw.SrcIP,
+					DstIp:         raw.DstIP,
+					SrcPort:       raw.SrcPort,
+					DstPort:       raw.DstPort,
+					Protocol:      raw.Protocol,
 					Length:        raw.Length,
+					Info:          raw.Info,
 					Raw:           raw.Raw,
 					InterfaceName: key.iface,
 					PodName:       pod.Name,

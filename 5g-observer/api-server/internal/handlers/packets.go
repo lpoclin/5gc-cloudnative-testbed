@@ -202,6 +202,7 @@ func (h *PacketsHandler) StreamPacketsQuery(c *gin.Context) {
 		Protocol      string `json:"protocol"`
 		Length        uint32 `json:"length"`
 		Info          string `json:"info"`
+		Raw           []byte `json:"raw,omitempty"`
 		InterfaceName string `json:"iface"`
 		PodName       string `json:"pod"`
 		Namespace     string `json:"ns"`
@@ -223,7 +224,7 @@ func (h *PacketsHandler) StreamPacketsQuery(c *gin.Context) {
 					Timestamp: strconv.FormatInt(p.TimestampNs, 10),
 					SrcIP: p.SrcIP, DstIP: p.DstIP,
 					SrcPort: p.SrcPort, DstPort: p.DstPort, Protocol: p.Protocol,
-					Length: p.Length, Info: p.Info,
+					Length: p.Length, Info: p.Info, Raw: p.Raw,
 					InterfaceName: p.InterfaceName, PodName: p.PodName,
 					Namespace: p.Namespace, Node: p.Node,
 				}

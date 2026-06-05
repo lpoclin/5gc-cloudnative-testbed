@@ -879,7 +879,6 @@ function CaptureTabPanel({
   const [rangeFrom,    setRangeFrom]   = useState('')
   const [rangeTo,      setRangeTo]     = useState('')
   const [status,       setStatus]      = useState<ConnStatus>('idle')
-  const [tsharkReady,  setTsharkReady] = useState(false)
 
   const reportStatus = useCallback((s: ConnStatus) => {
     setStatus(s)
@@ -891,8 +890,6 @@ function CaptureTabPanel({
     reportStatus('connecting')
     setPackets([])
     setCaptureTs(0)
-    setTsharkReady(false)
-    console.log('tsharkReady=false', tab.pod, tab.iface)
     counterRef.current = 0
     bufferRef.current  = []
     pausedRef.current  = false
@@ -924,11 +921,6 @@ function CaptureTabPanel({
         rawHex: p.raw ? base64ToHex(p.raw) : undefined,
       }))
       setCaptureTs(prev => prev === 0 && parsed.length > 0 ? Number(parsed[0].ts) : prev)
-      parsed.forEach(p => console.log('packet', p.protocol, p.info))
-      if (!tsharkReady && parsed.some(p => p.protocol !== '')) {
-        console.log('tsharkReady=true', tab.pod, tab.iface)
-        setTsharkReady(true)
-      }
       if (pausedRef.current) {
         bufferRef.current = [...bufferRef.current, ...parsed].slice(-RING_MAX)
       } else {
@@ -941,8 +933,6 @@ function CaptureTabPanel({
   // Filtered view
   const displayed = useMemo(() => {
     let list = packets
-    // Hide raw-bytes-only packets (empty protocol) until tshark has started decoding
-    if (!tsharkReady) list = list.filter(p => p.protocol !== '')
     if (protoFilter !== 'All') list = list.filter(p => p.protocol === protoFilter)
     if (search) {
       const s = search.toLowerCase()
@@ -951,7 +941,7 @@ function CaptureTabPanel({
         p.info.toLowerCase().includes(s) || p.protocol.toLowerCase().includes(s))
     }
     return list
-  }, [packets, protoFilter, search, tsharkReady])
+  }, [packets, protoFilter, search])
 
   // Export range
   const derivedFrom = useMemo(() =>
@@ -1089,13 +1079,7 @@ function CaptureTabPanel({
           </a>
         </div>
         <div className="flex-1" />
-        <div className="flex items-center gap-2 shrink-0">
-          {status === 'live' && !tsharkReady && (
-            <span className="px-2 py-1 rounded text-xs font-bold animate-pulse"
-              style={{ background: '#0d1f3c', border: '1px solid #388bfd', color: '#58a6ff' }}>
-              Starting tshark…
-            </span>
-          )}
+        <div className="flex items-center shrink-0">
           {statusBadge()}
         </div>
       </div>
