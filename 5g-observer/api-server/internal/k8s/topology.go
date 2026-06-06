@@ -450,7 +450,7 @@ var cniCache struct {
 
 const cniCacheTTL = 60 * time.Second
 
-func detectPrimaryCNI(ctx context.Context, cs *kubernetes.Clientset) string {
+func DetectPrimaryCNI(ctx context.Context, cs *kubernetes.Clientset) string {
 	cniCache.mu.Lock()
 	if cniCache.value != "" && time.Since(cniCache.fetchedAt) < cniCacheTTL {
 		v := cniCache.value
@@ -591,7 +591,7 @@ func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []s
 	nodes = append(nodes, dnNodes...)
 
 	edges := buildEdges(nodes, upfNodeDNNs, dnByDNN)
-	primaryCNI := detectPrimaryCNI(ctx, cs)
+	primaryCNI := DetectPrimaryCNI(ctx, cs)
 	secondaryCNI := detectSecondaryCNI(ctx, cs)
 
 	return &TopologyGraph{

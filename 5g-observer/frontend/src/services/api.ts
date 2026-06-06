@@ -48,7 +48,7 @@ export const api = {
       ),
     podsUtilization: () => request<PodMetricEntry[]>('/api/metrics/pods'),
     interfaceMetrics: (pod: string, iface: string) =>
-      request<{ throughputMbps: number; packetsPerSec: number; dropRate: number }>(
+      request<{ throughputMbps: number; packetsPerSec: number; dropRate: number; isCilium?: boolean }>(
         `/api/metrics/interface?pod=${encodeURIComponent(pod)}&interface=${encodeURIComponent(iface)}`
       ),
   },

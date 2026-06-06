@@ -78,7 +78,7 @@ func main() {
 
 	topoH    := handlers.NewTopologyHandler(k8sClient, targetNamespaces)
 	logsH    := handlers.NewLogsHandler(lokiClient)
-	metH     := handlers.NewMetricsHandler(promClient, captureServer)
+	metH     := handlers.NewMetricsHandler(promClient, captureServer, k8sClient)
 	infraH   := handlers.NewInfraHandler(k8sClient, promClient)
 	packetsH := handlers.NewPacketsHandler(captureServer)
 

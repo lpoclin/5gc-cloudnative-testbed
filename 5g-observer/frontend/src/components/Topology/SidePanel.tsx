@@ -26,7 +26,7 @@ interface Props {
   onTabClose: (id: string) => void
 }
 
-interface IfaceMeta { throughputMbps: number; packetsPerSec: number; dropRate: number }
+interface IfaceMeta { throughputMbps: number; packetsPerSec: number; dropRate: number; isCilium?: boolean }
 type MetricsMap = Record<string, IfaceMeta | null>
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -326,10 +326,12 @@ function PodInfo({ node, ifaceMetrics, clusterInfo }: {
                       <span style={{ color: '#c9d1d9' }}>{Math.round(m.packetsPerSec)}</span>
                       <span style={{ color: '#6b7280' }}> pkt/s</span>
                     </span>
+                    {m.isCilium && (
                     <span>
                       <span style={{ color: '#c9d1d9' }}>{m.dropRate.toFixed(1)}</span>
                       <span style={{ color: '#6b7280' }}>% drop</span>
                     </span>
+                    )}
                   </>
                 ) : (
                   <span style={{ color: '#6b7280' }}>—</span>

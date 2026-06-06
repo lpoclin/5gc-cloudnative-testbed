@@ -636,7 +636,7 @@ function NodeTipBox({ tip, onEnter, onLeave }: { tip: NodeTip; onEnter: () => vo
   )
 }
 
-interface IfaceMetrics { throughputMbps: number; packetsPerSec: number; dropRate: number }
+interface IfaceMetrics { throughputMbps: number; packetsPerSec: number; dropRate: number; isCilium?: boolean }
 
 function DotTipBox({
   tip, onCapture, onEnter, onLeave, metrics, metricsLoading, locked, onClose, primaryCNI, secondaryCNI,
@@ -696,7 +696,9 @@ function DotTipBox({
         <div className="space-y-0.5 mb-1.5 text-[10px]" style={{ color: MUTED }}>
           <div>Throughput: <strong style={{ color: '#e6edf3' }}>{(metrics?.throughputMbps ?? 0).toFixed(2)} Mbps</strong></div>
           <div>Packets/s:  <strong style={{ color: '#e6edf3' }}>{(metrics?.packetsPerSec ?? 0).toFixed(2)} pkt/s</strong></div>
-          <div>Drop:       <strong style={{ color: metrics && metrics.dropRate > 0 ? BADGE_WARN : '#e6edf3' }}>{(metrics?.dropRate ?? 0).toFixed(2)}%</strong></div>
+          {metrics?.isCilium && (
+            <div>Drop:       <strong style={{ color: metrics.dropRate > 0 ? BADGE_WARN : '#e6edf3' }}>{metrics.dropRate.toFixed(2)}%</strong></div>
+          )}
         </div>
       )}
 

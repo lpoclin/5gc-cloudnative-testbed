@@ -6,18 +6,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/lpoclin/5g-observer/api-server/internal/capture"
+	"github.com/lpoclin/5g-observer/api-server/internal/k8s"
 	"github.com/lpoclin/5g-observer/api-server/internal/prometheus"
 )
 
 type MetricsHandler struct {
 	prom *prometheus.Client
 	cap  *capture.Server
+	cs   *kubernetes.Clientset
 }
 
-func NewMetricsHandler(p *prometheus.Client, cap *capture.Server) *MetricsHandler {
-	return &MetricsHandler{prom: p, cap: cap}
+func NewMetricsHandler(p *prometheus.Client, cap *capture.Server, cs *kubernetes.Clientset) *MetricsHandler {
+	return &MetricsHandler{prom: p, cap: cap, cs: cs}
 }
 
 // GET /api/metrics/cluster
@@ -84,18 +87,27 @@ func (h *MetricsHandler) GetInterfaceMetrics(c *gin.Context) {
 	// Source 1: ring-buffer pps and throughput
 	pps, throughputMbps := h.cap.TrafficStats(pod, iface)
 
-	// Source 2: Hubble drop rate
-	dropRate := h.prom.InterfaceDropRate(c.Request.Context(), pod)
+	// Source 2: Hubble drop rate — only meaningful on the primary Cilium interface (eth0).
+	// Multus secondary interfaces and non-Cilium clusters have no Hubble telemetry.
+	primaryCNI := k8s.DetectPrimaryCNI(c.Request.Context(), h.cs)
+	isCilium := primaryCNI == "Cilium" && iface == "eth0"
+
+	var dropRate float64
+	if isCilium {
+		dropRate = h.prom.InterfaceDropRate(c.Request.Context(), pod)
+	}
 
 	log.Debug().
 		Str("pod", pod).Str("iface", iface).
 		Float64("pps", pps).Float64("mbps", throughputMbps).Float64("drop%", dropRate).
+		Bool("isCilium", isCilium).
 		Msg("interface metrics")
 
 	c.JSON(http.StatusOK, map[string]interface{}{
 		"throughputMbps": r2(throughputMbps),
 		"packetsPerSec":  r1(pps),
 		"dropRate":       dropRate,
+		"isCilium":       isCilium,
 	})
 }
 
