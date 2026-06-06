@@ -216,7 +216,7 @@ var fallbackNFMap = []struct {
 }
 
 func detectNFType(pod *corev1.Pod, ifaces []NetworkInterface) (NFType, string) {
-	// 0a. app.kubernetes.io/component — standard K8s recommended label (OAI, Open5GS, etc.)
+	// 0. app.kubernetes.io/component — bare values only; formatNFLabel handles "amf", "smf", etc.
 	if compVal, ok := pod.Labels["app.kubernetes.io/component"]; ok {
 		nfType, display, skip := formatNFLabel(compVal)
 		if !skip && nfType != NFTypeUnknown {
@@ -224,23 +224,7 @@ func detectNFType(pod *corev1.Pod, ifaces []NetworkInterface) (NFType, string) {
 		}
 	}
 
-	// 0b. app.kubernetes.io/name — may be compound: "oai-amf", "open5gs-smf", "free5gc-upf"
-	if nameVal, ok := pod.Labels["app.kubernetes.io/name"]; ok {
-		nfType, display, skip := formatNFLabel(nameVal)
-		if !skip && nfType != NFTypeUnknown {
-			return nfType, display
-		}
-		lower := strings.ToLower(nameVal)
-		for _, entry := range fallbackNFMap {
-			for _, kw := range entry.keywords {
-				if strings.Contains(lower, kw) {
-					return entry.nfType, entry.display
-				}
-			}
-		}
-	}
-
-	// 1. nf label — most reliable (free5GC labels each pod with nf=amf, nf=psaupf1, etc.)
+	// 1. nf label — free5GC (nf=amf, nf=psaupf1, nf=iupf1, etc.); handles PSA/iUPF variants
 	if nfVal, ok := pod.Labels["nf"]; ok {
 		nfType, display, skip := formatNFLabel(nfVal)
 		if skip {
@@ -251,7 +235,7 @@ func detectNFType(pod *corev1.Pod, ifaces []NetworkInterface) (NFType, string) {
 		}
 	}
 
-	// 2. component label — UERANSIM uses component=gnb, component=ue
+	// 2. component label — UERANSIM (component=gnb, component=ue)
 	if comp, ok := pod.Labels["component"]; ok {
 		nfType, display, skip := formatComponentLabel(comp)
 		if !skip && nfType != NFTypeUnknown {
@@ -259,10 +243,23 @@ func detectNFType(pod *corev1.Pod, ifaces []NetworkInterface) (NFType, string) {
 		}
 	}
 
-	// 3. Pod name fallback
+	// 3. app.kubernetes.io/name — compound names ("oai-amf", "open5gs-smf", "free5gc-upf").
+	// Substring scan only — no formatNFLabel — so PSA-UPF/iUPF distinction is not attempted here.
+	// Only reached when priorities 1 and 2 both failed, preserving free5GC/UERANSIM accuracy.
+	if nameVal, ok := pod.Labels["app.kubernetes.io/name"]; ok {
+		lower := strings.ToLower(nameVal)
+		for _, entry := range fallbackNFMap {
+			for _, kw := range entry.keywords {
+				if strings.Contains(lower, kw) {
+					return entry.nfType, entry.display
+				}
+			}
+		}
+	}
+
+	// 4. Pod name fallback — same keyword list; iUPF interface heuristic applied for UPF pods
 	name := strings.ToLower(pod.Name)
 
-	// iUPF interface heuristic: n3+n9 without n6
 	ifaceNames := make(map[string]bool)
 	for _, iface := range ifaces {
 		ifaceNames[iface.Interface] = true
