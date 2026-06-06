@@ -808,7 +808,22 @@ func podToNode(pod *corev1.Pod) *TopologyNode {
 	}
 
 	status := podStatus(pod)
-	age := time.Since(pod.CreationTimestamp.Time).Round(time.Second).String()
+	d    := time.Since(pod.CreationTimestamp.Time)
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	mins := int(d.Minutes()) % 60
+	secs := int(d.Seconds()) % 60
+	var age string
+	switch {
+	case days >= 30:
+		age = fmt.Sprintf("%dd", days)
+	case days >= 1:
+		age = fmt.Sprintf("%dd %dh", days, hours)
+	case int(d.Hours()) >= 1:
+		age = fmt.Sprintf("%dh %dm", int(d.Hours()), mins)
+	default:
+		age = fmt.Sprintf("%dm %ds", mins, secs)
+	}
 
 	img := ""
 	if len(pod.Spec.Containers) > 0 {

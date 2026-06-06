@@ -173,16 +173,6 @@ function getCNILabel(ifaceObj: NetworkInterface | undefined, primaryCNI: string,
   return ''
 }
 
-// ─── Heart badge path (14×14 SVG viewbox) ────────────────────────────────────
-
-const HEART_PATH: Path2D | null = (() => {
-  try {
-    return new Path2D(
-      'M7 12.5S1 8.5 1 4.5C1 2.5 2.5 1 4.5 1c1 0 2 .5 2.5 1.5C7.5 1.5 8.5 1 9.5 1 11.5 1 13 2.5 13 4.5c0 4-6 8-6 8z',
-    )
-  } catch { return null }
-})()
-
 // ─── Cytoscape stylesheet ─────────────────────────────────────────────────────
 
 function buildStylesheet() {
@@ -191,8 +181,8 @@ function buildStylesheet() {
       selector: 'node',
       style: {
         'background-color': NODE_FILL,
-        'border-color': NODE_BORDER,
-        'border-width': 1.5,
+        'border-color': BADGE_OK,
+        'border-width': 2,
         'label': 'data(label)',
         'color': BG,
         'font-size': 14,
@@ -211,15 +201,12 @@ function buildStylesheet() {
       selector: 'node:selected',
       style: { 'border-color': SIGNAL_CLR, 'border-width': 2.5, 'background-color': '#d4e8ff' } as cytoscape.Css.Node,
     },
-    { selector: 'node.hover', style: { 'border-color': SIGNAL_CLR, 'border-width': 2 } as cytoscape.Css.Node },
     {
-      selector: 'node[status = "CrashLoopBackOff"], node[status = "Error"], node[status = "OOMKilled"]',
-      style: { 'border-color': BADGE_ERR, 'border-width': 2 } as cytoscape.Css.Node,
+      selector: 'node.hover',
+      style: { 'border-color': '#6ee87a', 'border-width': 3.5, 'overlay-color': '#6ee87a', 'overlay-opacity': 0.06 } as cytoscape.Css.Node,
     },
-    {
-      selector: 'node[status = "Pending"], node[status = "Unknown"]',
-      style: { 'border-color': BADGE_WARN } as cytoscape.Css.Node,
-    },
+    { selector: 'node.error',    style: { 'border-color': BADGE_ERR,  'border-width': 2 } as cytoscape.Css.Node },
+    { selector: 'node.degraded', style: { 'border-color': BADGE_WARN, 'border-width': 2 } as cytoscape.Css.Node },
     {
       selector: 'edge',
       style: {
@@ -258,6 +245,12 @@ function buildElements(
   for (const node of graph.nodes) {
     const pos = positions.get(node.id) ?? { x: 700, y: 400 }
     const sm = node.nfType === 'gNB' || node.nfType === 'UE' || node.nfType === 'DN'
+    const statusClass = ['CrashLoopBackOff', 'Error', 'OOMKilled'].includes(node.status.condition)
+      ? 'error'
+      : (node.status.condition === 'Pending' || node.status.condition === 'Unknown' || node.status.restarts > 3)
+        ? 'degraded'
+        : ''
+    const classes = [sm ? 'sm' : '', statusClass].filter(Boolean).join(' ') || undefined
     els.push({
       group: 'nodes',
       data: {
@@ -267,7 +260,7 @@ function buildElements(
         restarts: node.status.restarts,
         _node: node,
       },
-      classes: sm ? 'sm' : undefined,
+      classes,
       position: pos,
     })
   }
@@ -452,40 +445,14 @@ function runDraw(
     ctx.textAlign = 'left'
   }
 
-  // ── Heart health badges ────────────────────────────────────────────────────
+  // ── Status pulse ring ────────────────────────────────────────────────────
   cy.nodes().forEach(cn => {
     const p     = cn.renderedPosition()
-    const h     = cn.renderedHeight()
     const color = badgeColor(cn.data('status') as string, (cn.data('restarts') as number) ?? 0)
-
-    // Centered horizontally, 8px above bottom border — inside node box, below label
-    const bx = p.x               // horizontally centered
-    const by = p.y + h / 2 - 8  // 8px above bottom border
-
-    if (HEART_PATH) {
-      ctx.save()
-      // Scale 14×14 heart path to 10×10; translate so heart is centered at (bx, by)
-      ctx.translate(bx - 5, by - 5)
-      ctx.scale(10 / 14, 10 / 14)
-      ctx.fillStyle = color
-      ctx.fill(HEART_PATH)
-      ctx.strokeStyle = '#0d1117'
-      ctx.lineWidth = 1.5
-      ctx.stroke(HEART_PATH)
-      ctx.restore()
-    } else {
-      // Fallback: colored circle (radius 5 = 10px diameter)
-      ctx.beginPath()
-      ctx.arc(bx, by, 5, 0, Math.PI * 2)
-      ctx.fillStyle = color
-      ctx.fill()
-    }
-
-    // Pulse ring for degraded states
     if (color !== BADGE_OK) {
       const pulse = 0.5 + 0.5 * Math.sin(t * 3)
       ctx.beginPath()
-      ctx.arc(bx, by, 9 + pulse * 4, 0, Math.PI * 2)
+      ctx.arc(p.x, p.y, 9 + pulse * 4, 0, Math.PI * 2)
       ctx.strokeStyle = color
       ctx.globalAlpha = 0.35 * (1 - pulse)
       ctx.lineWidth = 1
@@ -1026,6 +993,7 @@ function TopologyCanvas({
         const ex = cy.getElementById(el.data.id as string)
         if (ex.length > 0) {
           ex.data(el.data)
+          if (el.group === 'nodes') ex.classes(el.classes as string ?? '')
           if (el.group === 'nodes' && el.position && !ex.grabbed()) ex.position(el.position)
         } else {
           cy.add(el)
