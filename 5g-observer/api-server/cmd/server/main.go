@@ -108,9 +108,6 @@ func main() {
 		api.GET("/pvcs",            infraH.GetPVCs)
 		api.GET("/namespace-stats", infraH.GetNamespaceStats)
 
-		// Capture export
-		api.GET("/capture/export/:sessionID", handlers.ExportCapture)
-
 		// Packet decode (sharkd) and pcap export
 		api.GET("/packet/decode",    handlers.DecodePacketHandler(captureServer))
 		api.GET("/packets/export",   handlers.ExportPacketsHandler(captureServer))

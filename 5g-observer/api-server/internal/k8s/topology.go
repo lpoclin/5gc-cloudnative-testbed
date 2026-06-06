@@ -216,6 +216,30 @@ var fallbackNFMap = []struct {
 }
 
 func detectNFType(pod *corev1.Pod, ifaces []NetworkInterface) (NFType, string) {
+	// 0a. app.kubernetes.io/component — standard K8s recommended label (OAI, Open5GS, etc.)
+	if compVal, ok := pod.Labels["app.kubernetes.io/component"]; ok {
+		nfType, display, skip := formatNFLabel(compVal)
+		if !skip && nfType != NFTypeUnknown {
+			return nfType, display
+		}
+	}
+
+	// 0b. app.kubernetes.io/name — may be compound: "oai-amf", "open5gs-smf", "free5gc-upf"
+	if nameVal, ok := pod.Labels["app.kubernetes.io/name"]; ok {
+		nfType, display, skip := formatNFLabel(nameVal)
+		if !skip && nfType != NFTypeUnknown {
+			return nfType, display
+		}
+		lower := strings.ToLower(nameVal)
+		for _, entry := range fallbackNFMap {
+			for _, kw := range entry.keywords {
+				if strings.Contains(lower, kw) {
+					return entry.nfType, entry.display
+				}
+			}
+		}
+	}
+
 	// 1. nf label — most reliable (free5GC labels each pod with nf=amf, nf=psaupf1, etc.)
 	if nfVal, ok := pod.Labels["nf"]; ok {
 		nfType, display, skip := formatNFLabel(nfVal)

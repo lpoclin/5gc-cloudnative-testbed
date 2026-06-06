@@ -238,9 +238,3 @@ func (h *PacketsHandler) StreamPacketsQuery(c *gin.Context) {
 		}
 	}
 }
-
-// ExportCapture — GET /api/capture/export/:sessionID
-func ExportCapture(c *gin.Context) {
-	_ = c.Param("sessionID")
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "pcap export not yet implemented"})
-}
