@@ -1,7 +1,9 @@
 import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { useState, useEffect, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import CapturePage, { type CaptureTab } from '@/pages/CapturePage'
+import type { TopologyGraph } from '@/types/topology'
 
 const NAV_LINKS = [
   { to: '/',               label: 'Topology'       },
@@ -13,6 +15,7 @@ export default function Layout() {
   const location                  = useLocation()
   const [searchParams]            = useSearchParams()
   const isCaptures                = location.pathname.startsWith('/captures')
+  const queryClient               = useQueryClient()
 
   const [captureTabs,  setCaptureTabs]  = useState<CaptureTab[]>([])
   const [activeTabId,  setActiveTabId]  = useState<string | null>(null)
@@ -26,14 +29,19 @@ export default function Layout() {
         return prev
       }
       if (prev.length >= 8) return prev
-      const id         = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-      // podDisplay is computed in CapturePage (which has node data); use pod name heuristic here
-      const podDisplay = pod
+      const id       = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const topology = queryClient.getQueryData<TopologyGraph>(['topology'])
+      const node     = topology?.nodes?.find(n => n.podName === pod)
+      const podDisplay = node?.displayName
+        ?? pod.split('-')
+             .filter((s: string) => !/^[0-9a-f]{5,}$/.test(s))
+             .slice(0, 2)
+             .join('-')
       const tab: CaptureTab = { id, pod, podDisplay, iface }
       setActiveTabId(id)
       return [...prev, tab]
     })
-  }, [])
+  }, [queryClient])
 
   // Open a tab when navigating to /captures?pod=X&interface=Y
   useEffect(() => {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -285,23 +286,183 @@ func detectNFType(pod *corev1.Pod, ifaces []NetworkInterface) (NFType, string) {
 	return NFTypeUnknown, "UNKNOWN"
 }
 
-// numberDuplicates appends -1, -2 suffixes when multiple nodes share the same displayName.
-func numberDuplicates(nodes []TopologyNode) {
-	count := make(map[string]int)
-	for _, n := range nodes {
-		if n.NFType != NFTypeDN {
-			count[n.DisplayName]++
+// dedupVendorPrefixes are pod-name segments that carry no distinguishing information.
+var dedupVendorPrefixes = map[string]bool{
+	"free5gc": true, "open5gs": true, "oai": true, "towards5gs": true,
+}
+
+// dedupNFKeywords are NF-type segments that are already encoded in DisplayName.
+var dedupNFKeywords = map[string]bool{
+	"amf": true, "smf": true, "upf": true, "nrf": true, "ausf": true,
+	"udm": true, "udr": true, "nssf": true, "pcf": true, "chf": true,
+	"nef": true, "gnb": true, "ue": true, "webui": true, "iupf": true, "psaupf": true,
+}
+
+func isHexHash(s string) bool {
+	if len(s) < 5 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
 		}
 	}
-	seen := make(map[string]int)
-	for i := range nodes {
-		if nodes[i].NFType == NFTypeDN {
+	return true
+}
+
+func isK8sRandomSuffix(s string) bool {
+	if len(s) > 5 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+			return false
+		}
+	}
+	return true
+}
+
+// deduplicateDisplayNames assigns distinguishing suffixes to nodes that share a
+// displayName within the same namespace. Pods that carry an explicit "nf" or
+// "component" label are skipped (their displayName is already authoritative).
+//
+// Three strategies tried in order:
+//   A – integer segment extracted from pod name (e.g. upf-0, upf-1)
+//   B – unique meaningful segment from pod name (e.g. "slice1", "edge")
+//   C – creation-time rank (oldest = 1)
+func deduplicateDisplayNames(nodes []TopologyNode, created map[string]time.Time) {
+	type groupKey struct{ ns, name string }
+
+	groups := make(map[groupKey][]int)
+	for i, n := range nodes {
+		if n.NFType == NFTypeDN {
 			continue
 		}
-		name := nodes[i].DisplayName
-		if count[name] > 1 {
-			seen[name]++
-			nodes[i].DisplayName = fmt.Sprintf("%s-%d", name, seen[name])
+		if _, hasNF := n.Labels["nf"]; hasNF {
+			continue
+		}
+		if _, hasComp := n.Labels["component"]; hasComp {
+			continue
+		}
+		k := groupKey{n.Namespace, n.DisplayName}
+		groups[k] = append(groups[k], i)
+	}
+
+	for _, idxs := range groups {
+		if len(idxs) < 2 {
+			continue
+		}
+
+		// ── Step A: single integer segment ───────────────────────────────────
+		allInts := true
+		intVals := make([]int, len(idxs))
+		for j, idx := range idxs {
+			segs := strings.Split(nodes[idx].PodName, "-")
+			found, count := 0, 0
+			for _, seg := range segs {
+				if v, err := strconv.Atoi(seg); err == nil {
+					found = v
+					count++
+				}
+			}
+			if count != 1 {
+				allInts = false
+				break
+			}
+			intVals[j] = found
+		}
+		if allInts {
+			minV := intVals[0]
+			for _, v := range intVals[1:] {
+				if v < minV {
+					minV = v
+				}
+			}
+			if minV == 0 {
+				for j := range intVals {
+					intVals[j]++
+				}
+			}
+			uniq := make(map[int]bool, len(intVals))
+			unique := true
+			for _, v := range intVals {
+				if uniq[v] {
+					unique = false
+					break
+				}
+				uniq[v] = true
+			}
+			if unique {
+				for j, idx := range idxs {
+					nodes[idx].DisplayName = fmt.Sprintf("%s-%d", nodes[idx].DisplayName, intVals[j])
+				}
+				continue
+			}
+		}
+
+		// ── Step B: single meaningful pod-name segment ────────────────────────
+		allOne := true
+		meaningfulSegs := make([]string, len(idxs))
+		for j, idx := range idxs {
+			segs := strings.Split(nodes[idx].PodName, "-")
+			var meaningful []string
+			for _, seg := range segs {
+				lower := strings.ToLower(seg)
+				if dedupVendorPrefixes[lower] {
+					continue
+				}
+				if dedupNFKeywords[lower] {
+					continue
+				}
+				if isHexHash(lower) {
+					continue
+				}
+				if isK8sRandomSuffix(seg) {
+					continue
+				}
+				if _, err := strconv.Atoi(seg); err == nil {
+					continue
+				}
+				meaningful = append(meaningful, seg)
+			}
+			if len(meaningful) != 1 {
+				allOne = false
+				break
+			}
+			meaningfulSegs[j] = meaningful[0]
+		}
+		if allOne {
+			uniq := make(map[string]bool, len(meaningfulSegs))
+			unique := true
+			for _, s := range meaningfulSegs {
+				if uniq[s] {
+					unique = false
+					break
+				}
+				uniq[s] = true
+			}
+			if unique {
+				for j, idx := range idxs {
+					nodes[idx].DisplayName = fmt.Sprintf("%s-%s", nodes[idx].DisplayName, meaningfulSegs[j])
+				}
+				continue
+			}
+		}
+
+		// ── Step C: creation-time rank ────────────────────────────────────────
+		type podRank struct {
+			idx int
+			t   time.Time
+		}
+		ranks := make([]podRank, len(idxs))
+		for j, idx := range idxs {
+			ranks[j] = podRank{idx: idx, t: created[nodes[idx].PodName]}
+		}
+		sort.Slice(ranks, func(a, b int) bool {
+			return ranks[a].t.Before(ranks[b].t)
+		})
+		for rank, pr := range ranks {
+			nodes[pr.idx].DisplayName = fmt.Sprintf("%s-%d", nodes[pr.idx].DisplayName, rank+1)
 		}
 	}
 }
@@ -580,6 +741,7 @@ func detectSecondaryCNI(ctx context.Context, cs *kubernetes.Clientset) string {
 func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []string) (*TopologyGraph, error) {
 	var nodes []TopologyNode
 	nsSet := make(map[string]bool)
+	created := make(map[string]time.Time)
 
 	for _, ns := range namespaces {
 		pods, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
@@ -590,6 +752,7 @@ func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []s
 			node := podToNode(&pod)
 			if node != nil {
 				nodes = append(nodes, *node)
+				created[pod.Name] = pod.CreationTimestamp.Time
 				nsSet[ns] = true
 			}
 		}
@@ -603,8 +766,8 @@ func BuildTopology(ctx context.Context, cs *kubernetes.Clientset, namespaces []s
 		}
 	}
 
-	// Number duplicate display names before adding virtual nodes
-	numberDuplicates(nodes)
+	// Deduplicate display names before adding virtual nodes
+	deduplicateDisplayNames(nodes, created)
 
 	// Detect DNNs from UPF configmaps and build virtual DN nodes
 	cmEntries := getUPFDNNEntries(ctx, cs, namespaces)
