@@ -1,6 +1,7 @@
 # 03 — Hubble
 
 This section moves Hubble UI and Hubble Relay to k8s-worker-3 and creates the HTTPRoute on the hubble-gateway. Hubble is Cilium's built-in network observability component providing real-time flow visibility at L3/L4 and L7 across all cluster workloads.
+
 > ⚠️ **Run this section on k8s-master only.**
 
 ---
@@ -88,8 +89,56 @@ http://192.168.18.231
 ```
 
 <img src="img/hubble-ui.png" alt="Hubble UI showing network flows" width="800">
-<sub>Figure 4. Hubble UI accessible at http://192.168.18.231 .</sub>
+<sub>Figure 4. Hubble UI accessible at http://192.168.18.231.</sub>
 <br><br>
+
+---
+
+## Step 6 — (Optional) Scrape Hubble Metrics with Prometheus
+
+> **Prerequisites:** Hubble metrics export must be enabled first — see [chapter-03 / 05-cilium Step 6](../../chapter-03-kubernetes-setup/05-cilium/README.md#step-6--optional-enable-hubble-metrics-export). The kube-prometheus-stack must also have `serviceMonitorSelectorNilUsesHelmValues: false` — see [chapter-04 / 01-prometheus-grafana](../01-prometheus-grafana/README.md).
+
+Create a ServiceMonitor so Prometheus automatically scrapes the Hubble metrics endpoint (port 9965) on each Cilium agent:
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hubble-metrics
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: hubble
+  endpoints:
+    - port: hubble-metrics
+      interval: 15s
+      path: /metrics
+EOF
+```
+
+Verify after ~30 seconds:
+
+```bash
+kubectl port-forward -n monitoring \
+  prometheus-kube-prometheus-stack-prometheus-0 9090:9090 &
+sleep 5
+curl -s 'http://localhost:9090/prometheus/api/v1/query?query=hubble_drop_total' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('OK' if d['data']['result'] else 'No data yet')"
+kill %1
+```
+
+<img src="img/hubble_metrics_enabled.png" alt="curl output showing OK confirming Prometheus is scraping hubble_drop_total" width="800">
+<sub>Figure 5. Prometheus scraping Hubble metrics successfully — hubble_drop_total returns OK.</sub>
+<br><br>
+
+`OK` confirms Prometheus is scraping Hubble successfully. Metrics are available in Grafana and any PromQL-compatible tool.
 
 ---
 
@@ -97,6 +146,8 @@ http://192.168.18.231
 
 - \[1\] Cilium Documentation, "Hubble Setup."
       https://docs.cilium.io/en/v1.19/observability/hubble/setup/ [Accessed: May 2026]
+- \[2\] Prometheus Operator, "ServiceMonitor CRD."
+      https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.ServiceMonitor [Accessed: May 2026]
 
 ---
 

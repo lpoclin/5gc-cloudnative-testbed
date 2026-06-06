@@ -81,6 +81,8 @@ prometheus:
       role: observability
     externalUrl: http://192.168.18.230/prometheus
     routePrefix: /prometheus
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
     storageSpec:
       volumeClaimTemplate:
         spec:
