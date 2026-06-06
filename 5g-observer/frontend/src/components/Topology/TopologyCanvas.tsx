@@ -182,7 +182,10 @@ function buildStylesheet() {
       style: {
         'background-color': NODE_FILL,
         'border-color': BADGE_OK,
-        'border-width': 2,
+        'border-width': 3.5,
+        'outline-width': 1,
+        'outline-color': BG,
+        'outline-offset': 0,
         'label': 'data(label)',
         'color': BG,
         'font-size': 14,
@@ -199,14 +202,14 @@ function buildStylesheet() {
     { selector: 'node.sm', style: { 'width': 70 } as cytoscape.Css.Node },
     {
       selector: 'node:selected',
-      style: { 'border-color': SIGNAL_CLR, 'border-width': 2.5, 'background-color': '#d4e8ff' } as cytoscape.Css.Node,
+      style: { 'border-color': SIGNAL_CLR, 'border-width': 4, 'outline-width': 1, 'outline-color': BG, 'outline-offset': 0, 'background-color': '#d4e8ff' } as cytoscape.Css.Node,
     },
     {
       selector: 'node.hover',
-      style: { 'border-color': '#6ee87a', 'border-width': 3.5, 'overlay-color': '#6ee87a', 'overlay-opacity': 0.06 } as cytoscape.Css.Node,
+      style: { 'border-color': '#6ee87a', 'border-width': 3.5, 'outline-width': 1, 'outline-color': BG, 'outline-offset': 0, 'overlay-color': '#6ee87a', 'overlay-opacity': 0.06 } as cytoscape.Css.Node,
     },
-    { selector: 'node.error',    style: { 'border-color': BADGE_ERR,  'border-width': 2 } as cytoscape.Css.Node },
-    { selector: 'node.degraded', style: { 'border-color': BADGE_WARN, 'border-width': 2 } as cytoscape.Css.Node },
+    { selector: 'node.error',    style: { 'border-color': BADGE_ERR,  'border-width': 3.5, 'outline-width': 1, 'outline-color': BG, 'outline-offset': 0 } as cytoscape.Css.Node },
+    { selector: 'node.degraded', style: { 'border-color': BADGE_WARN, 'border-width': 3.5, 'outline-width': 1, 'outline-color': BG, 'outline-offset': 0 } as cytoscape.Css.Node },
     {
       selector: 'edge',
       style: {
