@@ -111,6 +111,21 @@ func (h *MetricsHandler) GetInterfaceMetrics(c *gin.Context) {
 	})
 }
 
+// GET /api/metrics/active
+// Returns all pod+interface pairs that have received packets in the last 300ms.
+func (h *MetricsHandler) GetActiveTraffic(c *gin.Context) {
+	pairs := h.cap.ActivePairs()
+	type item struct {
+		Pod   string `json:"pod"`
+		Iface string `json:"iface"`
+	}
+	out := make([]item, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, item{Pod: p.PodName, Iface: p.Iface})
+	}
+	c.JSON(http.StatusOK, gin.H{"active": out})
+}
+
 // GET /api/metrics/pods
 func (h *MetricsHandler) GetPodsUtilization(c *gin.Context) {
 	pods, err := h.prom.PodUtilization(c.Request.Context())

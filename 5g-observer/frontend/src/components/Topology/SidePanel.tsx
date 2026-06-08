@@ -8,6 +8,8 @@ import type { TopologyNode } from '@/types/topology'
 import type { ClusterInfo } from '@/types/k8s'
 import { api } from '@/services/api'
 
+const METRICS_REFRESH_MS = 300
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface NfTabInfo {
   id: string
@@ -374,7 +376,7 @@ export default function SidePanel({ node, allNodes: _allNodes, onClose, onCaptur
         ),
       ).then(entries => setIfaceMetrics(Object.fromEntries(entries)))
     fetchAll()
-    const id = setInterval(fetchAll, 10_000)
+    const id = setInterval(fetchAll, METRICS_REFRESH_MS)
     return () => clearInterval(id)
   }, [node.id]) // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -14,6 +14,8 @@ interface NfTab {
   view: 'logs' | 'info'
 }
 
+const METRICS_REFRESH_MS = 300
+
 const SIDE_MIN = 400
 const SIDE_MAX = 1600
 const SIDE_DEFAULT = 800
@@ -114,6 +116,42 @@ export default function TopologyPage() {
   }, [])
 
   const { data: graph, isLoading, isError, refetch } = useTopology()
+
+  // ── Active traffic polling ─────────────────────────────────────────────────
+  const [trafficEdgeIds, setTrafficEdgeIds] = useState(new Set<string>())
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetch('/api/metrics/active')
+        .then(r => r.json() as Promise<{ active: { pod: string; iface: string }[] }>)
+        .then(({ active }) => {
+          const set = new Set<string>()
+          if (!graph) { setTrafficEdgeIds(set); return }
+          for (const { pod, iface } of active) {
+            for (const edge of graph.edges) {
+              if (edge.interface === iface &&
+                  graph.nodes.find(n => n.id === edge.source)?.podName === pod) {
+                set.add(edge.id)
+              }
+            }
+          }
+          // N1 (wireless arcs): activate when any interface on the gNB pod is active
+          const activePods = new Set(active.map(p => p.pod))
+          for (const edge of graph.edges) {
+            if (edge.interface === 'n1') {
+              const srcPod = graph.nodes.find(n => n.id === edge.source)?.podName
+              const dstPod = graph.nodes.find(n => n.id === edge.target)?.podName
+              if ((srcPod && activePods.has(srcPod)) || (dstPod && activePods.has(dstPod))) {
+                set.add(edge.id)
+              }
+            }
+          }
+          setTrafficEdgeIds(set)
+        })
+        .catch(() => {})
+    }, METRICS_REFRESH_MS)
+    return () => clearInterval(id)
+  }, [graph])
 
   // Namespace display — derived from the API response, display-only.
   const displayNS   = graph?.namespaces ?? []
@@ -243,6 +281,7 @@ export default function TopologyPage() {
               selectedNodeId={activeNfTabId ?? undefined}
               namespace={canvasNS}
               sidePanelOpen={sidePanelOpen}
+              trafficEdgeIds={trafficEdgeIds}
             />
           )}
         </div>

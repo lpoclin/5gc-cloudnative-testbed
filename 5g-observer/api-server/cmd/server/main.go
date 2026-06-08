@@ -98,6 +98,7 @@ func main() {
 		api.GET("/metrics/timeseries",              metH.GetTimeSeries)
 		api.GET("/metrics/pod/:namespace/:pod",     metH.GetPodMetrics)
 		api.GET("/metrics/interface",               metH.GetInterfaceMetrics)
+		api.GET("/metrics/active",                  metH.GetActiveTraffic)
 		api.GET("/metrics/pods",                    metH.GetPodsUtilization)
 
 		// Infrastructure

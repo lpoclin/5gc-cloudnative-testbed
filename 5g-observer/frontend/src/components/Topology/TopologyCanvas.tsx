@@ -173,6 +173,8 @@ function getCNILabel(ifaceObj: NetworkInterface | undefined, primaryCNI: string,
   return ''
 }
 
+const METRICS_REFRESH_MS = 300
+
 // ─── Cytoscape stylesheet ─────────────────────────────────────────────────────
 
 function buildStylesheet() {
@@ -183,7 +185,7 @@ function buildStylesheet() {
         'background-color': NODE_FILL,
         'border-color': BADGE_OK,
         'border-width': 3.5,
-        'outline-width': 1,
+        'outline-width': 2,
         'outline-color': BG,
         'outline-offset': 0,
         'label': 'data(label)',
@@ -202,14 +204,14 @@ function buildStylesheet() {
     { selector: 'node.sm', style: { 'width': 70 } as cytoscape.Css.Node },
     {
       selector: 'node:selected',
-      style: { 'border-color': SIGNAL_CLR, 'border-width': 4, 'outline-width': 1, 'outline-color': BG, 'outline-offset': 0, 'background-color': '#d4e8ff' } as cytoscape.Css.Node,
+      style: { 'border-color': '#00d9ff', 'border-width': 4, 'outline-width': 2, 'outline-color': BG, 'outline-offset': 0, 'background-color': '#d4e8ff' } as cytoscape.Css.Node,
     },
     {
       selector: 'node.hover',
-      style: { 'border-color': '#6ee87a', 'border-width': 3.5, 'outline-width': 1, 'outline-color': BG, 'outline-offset': 0, 'overlay-color': '#6ee87a', 'overlay-opacity': 0.06 } as cytoscape.Css.Node,
+      style: { 'border-color': '#6ee87a', 'border-width': 3.5, 'outline-width': 2, 'outline-color': BG, 'outline-offset': 0, 'overlay-color': '#6ee87a', 'overlay-opacity': 0.06 } as cytoscape.Css.Node,
     },
-    { selector: 'node.error',    style: { 'border-color': BADGE_ERR,  'border-width': 3.5, 'outline-width': 1, 'outline-color': BG, 'outline-offset': 0 } as cytoscape.Css.Node },
-    { selector: 'node.degraded', style: { 'border-color': BADGE_WARN, 'border-width': 3.5, 'outline-width': 1, 'outline-color': BG, 'outline-offset': 0 } as cytoscape.Css.Node },
+    { selector: 'node.error',    style: { 'border-color': BADGE_ERR,  'border-width': 3.5, 'outline-width': 2, 'outline-color': BG, 'outline-offset': 0 } as cytoscape.Css.Node },
+    { selector: 'node.degraded', style: { 'border-color': BADGE_WARN, 'border-width': 3.5, 'outline-width': 2, 'outline-color': BG, 'outline-offset': 0 } as cytoscape.Css.Node },
     {
       selector: 'edge',
       style: {
@@ -749,7 +751,7 @@ function TopologyCanvas({
         .catch(() => setMetricsLoading(false))
     }
     fetchM()
-    metricsTimer.current = setInterval(fetchM, 1_000)
+    metricsTimer.current = setInterval(fetchM, METRICS_REFRESH_MS)
     return () => clearInterval(metricsTimer.current)
   }, [dotPodName, dotIface])
 

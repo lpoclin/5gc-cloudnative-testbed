@@ -201,10 +201,10 @@ func (s *Server) recordStats(key wildcardKey, pkts []Packet) {
 }
 
 // TrafficStats returns the per-second packet rate and throughput (Mbps) for
-// a given pod+interface averaged over a 2-second sliding window.
+// a given pod+interface averaged over a 300ms sliding window.
 // Returns (0, 0) when no data has been received yet.
 func (s *Server) TrafficStats(pod, iface string) (pps, throughputMbps float64) {
-	const window = 2.0
+	const window = 0.3
 	key := wildcardKey{PodName: pod, Iface: iface}
 	cutoff := time.Now().Add(-time.Duration(window * float64(time.Second)))
 
@@ -226,6 +226,30 @@ func (s *Server) TrafficStats(pod, iface string) (pps, throughputMbps float64) {
 	pps = float64(totalPkts) / window
 	throughputMbps = float64(totalBytes) * 8 / 1e6 / window
 	return
+}
+
+// ActivePair is an exported pod+interface pair that has live traffic.
+type ActivePair struct {
+	PodName string
+	Iface   string
+}
+
+// ActivePairs returns all pod+interface pairs that received at least one packet
+// in the last 300 ms.
+func (s *Server) ActivePairs() []ActivePair {
+	cutoff := time.Now().Add(-300 * time.Millisecond)
+	s.statsMu.Lock()
+	defer s.statsMu.Unlock()
+	var active []ActivePair
+	for key, entries := range s.statsMap {
+		for _, e := range entries {
+			if e.ts.After(cutoff) {
+				active = append(active, ActivePair{PodName: key.PodName, Iface: key.Iface})
+				break
+			}
+		}
+	}
+	return active
 }
 
 // RegisterWildcardSubscriber subscribes to all packets for pod+iface, any node.
