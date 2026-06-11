@@ -200,49 +200,119 @@ mongodb:
     size: 6Gi
   extraDeploy: []
 
-# Control plane NFs on nodes labeled role=general
+# Control plane NFs — role=general
+# configuration.metrics: exposes Prometheus /metrics on :9091 (disabled by default)
+# AMF: business metrics (UEs, PDU sessions, handovers) + SBI metrics
+# SMF, NRF, AUSF, UDM, UDR, PCF, NSSF, CHF: SBI request rate + latency
+# NEF: metrics not available in free5gc-helm v4.2.2 chart — check future releases
+# UPF (go-upf): metrics not available in v4.2.2 — no metricsServer implemented
 free5gc-amf:
   amf:
     nodeSelector:
       role: general
+    configuration:
+      metrics:
+        enable: true
+        scheme: http
+        port: 9091
+        namespace: free5gc
+
 free5gc-smf:
   smf:
     nodeSelector:
       role: general
+    configuration:
+      metrics:
+        enable: true
+        scheme: http
+        port: 9091
+        namespace: free5gc
+
 free5gc-nrf:
   nrf:
     nodeSelector:
       role: general
+    configuration:
+      metrics:
+        enable: true
+        scheme: http
+        port: 9091
+        namespace: free5gc
+
 free5gc-ausf:
   ausf:
     nodeSelector:
       role: general
+    configuration:
+      metrics:
+        enable: true
+        scheme: http
+        port: 9091
+        namespace: free5gc
+
 free5gc-udm:
   udm:
     nodeSelector:
       role: general
+    configuration:
+      metrics:
+        enable: true
+        scheme: http
+        port: 9091
+        namespace: free5gc
+
 free5gc-udr:
   udr:
     nodeSelector:
       role: general
+    configuration:
+      metrics:
+        enable: true
+        scheme: http
+        port: 9091
+        namespace: free5gc
+
 free5gc-pcf:
   pcf:
     nodeSelector:
       role: general
+    configuration:
+      metrics:
+        enable: true
+        scheme: http
+        port: 9091
+        namespace: free5gc
+
 free5gc-nssf:
   nssf:
     nodeSelector:
       role: general
+    configuration:
+      metrics:
+        enable: true
+        scheme: http
+        port: 9091
+        namespace: free5gc
+
 free5gc-chf:
   chf:
     nodeSelector:
       role: general
+    configuration:
+      metrics:
+        enable: true
+        scheme: http
+        port: 9091
+        namespace: free5gc
+
+# NEF — metrics not available in free5gc-helm v4.2.2 chart, check future releases
 free5gc-nef:
   nef:
     nodeSelector:
       role: general
 
-# User plane NFs on nodes labeled role=userplane (kernel 5.15 + gtp5g required)
+# User plane NFs — role=userplane (kernel 5.15 + gtp5g required)
+# UPF (go-upf) — metrics not available in v4.2.2, no metricsServer implemented
 free5gc-upf:
   upf:
     nodeSelector:
@@ -257,7 +327,7 @@ free5gc-upf:
     nodeSelector:
       role: userplane
 
-# WebUI on nodes labeled role=observability (Gateway API HTTPRoute /free5gc)
+# WebUI — role=observability (Gateway API HTTPRoute /free5gc)
 free5gc-webui:
   webui:
     nodeSelector:

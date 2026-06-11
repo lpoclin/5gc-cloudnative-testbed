@@ -252,6 +252,40 @@ http://192.168.18.230/grafana
 
 ---
 
+## Step 10 — Apply free5GC PodMonitor
+
+Scrapes native Prometheus metrics exposed by free5GC v4.2.2 NFs on port 9091.
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: free5gc-nfs
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - free5gc
+  selector:
+    matchLabels:
+      project: free5gc
+  podMetricsEndpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+    scheme: http
+EOF
+```
+
+<img src="img/free5gc-podmonitor.png" alt="free5gc PodMonitor created" width="800">
+<sub>Figure 10. free5GC PodMonitor created. Nine NFs scrapeadas: AMF, SMF, NRF, AUSF, UDM, UDR, PCF, NSSF, CHF. NEF and UPF do not expose metrics in free5gc-helm v4.2.2.</sub>
+<br><br>
+
+---
+
 ## References
 
 - \[1\] Prometheus Community, "kube-prometheus-stack."
