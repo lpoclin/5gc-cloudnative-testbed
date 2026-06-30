@@ -2,13 +2,17 @@
 
 A reproducible cloud-native 5G Standalone (SA) testbed on Kubernetes with free5GC in a ULCL configuration with one branching and two anchor UPFs, deployed over Proxmox with Cilium, Multus, Longhorn, and a Prometheus-Grafana-Loki observability stack, documented from bare metal and released publicly.
 
-<img src="docs/chapter-05-5g-network-environment/02-free5gc/img/architecture.png" width="800" alt="Testbed Architecture">
+<p align="center">
+  <img src="docs/chapter-05-5g-network-environment/02-free5gc/img/architecture.png" width="600" alt="Testbed Architecture">
+</p>
 
 ## Overview
 
 The user plane follows a ULCL topology with three UPF instances: BranchingUPF (iUPF) classifies uplink flows by destination prefix and forwards them over N9; AnchorUPF1 (PSA-UPF1) allocates UE addresses and provides internet breakout over N6; AnchorUPF2 (PSA-UPF2) provides Multi-access Edge Computing (MEC) local breakout toward a campus application server.
 
-<img src="docs/chapter-05-5g-network-environment/02-free5gc/img/topology.png" width="800" alt="ULCL Topology">
+<p align="center">
+  <img src="docs/chapter-05-5g-network-environment/02-free5gc/img/topology.png" width="600" alt="ULCL Topology">
+</p>
 
 ## Demo
 
