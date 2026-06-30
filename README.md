@@ -80,7 +80,7 @@ Observability
 
 ## Affiliation
 
-<img src="docs/chapter-05-5g-network-environment/02-free5gc/img/fiee-unmsm-logo.svg" width="600" alt="Faculty of Electronic and Electrical Engineering, UNMSM">
+<img src="docs/chapter-05-5g-network-environment/02-free5gc/img/fiee-unmsm-logo.svg" width="400" alt="Faculty of Electronic and Electrical Engineering, UNMSM">
 
 Faculty of Electronic and Electrical Engineering, Universidad Nacional Mayor de San Marcos, Lima, Peru.
 
