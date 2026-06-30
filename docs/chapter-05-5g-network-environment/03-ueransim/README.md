@@ -2,22 +2,24 @@
 
 This section deploys UERANSIM as a simulated 5G NR gNB and UE using the ueransim chart included in free5gc-helm v4.2.2. UERANSIM connects to the free5GC core over dedicated Multus interfaces on the N2 and N3 planes.
 
+> **Scope of this guide:** The steps below deploy the simulated RAN and UE for the campus ULCL scenario described in *"A Cloud-Native 5G Standalone ULCL Testbed on Kubernetes for User-Plane Evaluation Under Load and Failure"* (INTERCON 2026). A single UE is configured here to reproduce the experiments in Section IV of the paper. For multi-UE configurations or alternative subscriber parameters, refer to the [official chart documentation](https://github.com/free5gc/free5gc-helm).
+
 > ⚠️ **Run this section on k8s-master only.**
 
 ---
 
 ## Prerequisites
 
-- [ ] Completed [02 — free5GC](../02-free5gc/README.md)
-- [ ] All free5GC NFs Running
-- [ ] SSH access to k8s-master
+- Completed [02 — free5GC](../02-free5gc/README.md)
+- All free5GC NFs Running
+- SSH access to k8s-master
 
 ---
 
 ## Component Versions
 
 | Component | Version |
-|---|---|
+| :--- | :--- |
 | ueransim chart | free5gc-helm v4.2.2 |
 | UERANSIM image | free5gc/ueransim:v4.0.1 |
 
@@ -25,14 +27,13 @@ This section deploys UERANSIM as a simulated 5G NR gNB and UE using the ueransim
 
 ## Architecture
 
-UERANSIM runs a gNB and a UE pod on k8s-worker-2. The gNB connects to AMF over N2 (SCTP/NGAP) and to iUPF1 over N3 (GTP-U). The UE attaches and triggers PDU session establishment, creating a `uesimtun0` TUN interface inside the UE pod.
+UERANSIM runs a gNB and a UE pod on k8s-worker-2. The gNB connects to the AMF over N2 (SCTP/NGAP) and to the ULCL UPF over N3 (GTP-U). The UE attaches and triggers PDU session establishment, creating a `uesimtun0` TUN interface inside the UE pod through which all experiment traffic flows.
 
 | Component | Interface | Peer |
-|---|---|---|
+| :--- | :--- | :--- |
 | gNB N2 | 10.100.50.250 | AMF 10.100.50.249 |
-| gNB N3 | 10.100.50.236 | iUPF1 10.100.50.234 |
-| UE | uesimtun0 | DN via UPF N6 |
-
+| gNB N3 | 10.100.50.236 | ULCL UPF 10.100.50.234 |
+| UE | uesimtun0 (10.60.0.x) | PSA-UPF1 / PSA-UPF2 via ULCL steering |
 ---
 
 ## Step 1 — Connect to k8s-master
@@ -48,7 +49,7 @@ ssh unmsm@192.168.18.210
 Register the UE subscriber at `http://192.168.18.233` using `admin` / `free5gc`. Add a new subscriber with the parameters below. The WebUI pre-fills extra S-NSSAI slices — remove any slice other than `01010203` before saving.
 
 | Field | Value |
-|---|---|
+| :--- | :--- |
 | SUPI | imsi-208930000000001 |
 | MCC | 208 |
 | MNC | 93 |
@@ -59,6 +60,12 @@ Register the UE subscriber at `http://192.168.18.233` using `admin` / `free5gc`.
 | SST | 1 |
 | SD | 010203 |
 | DNN | internet |
+| DNN Uplink AMBR | 1000 Mbps |
+| DNN Downlink AMBR | 1000 Mbps |
+| Flow Rule IP Filter | 172.16.0.10/32 |
+| Flow Rule 5QI | 8 |
+| Flow Rule Uplink MBR | 208 Mbps |
+| Flow Rule Downlink MBR | 208 Mbps |
 
 <img src="img/subscriber-register.png" alt="free5GC WebUI subscriber registration" width="800">
 <sub>Figure 1. UE subscriber registered in free5GC WebUI.</sub>
@@ -193,4 +200,4 @@ kubectl logs -n free5gc -l app=ueransim,component=ue
 
 ✅ You are here: `chapter-05-5g-network-environment / 03-ueransim`
 
-⏭️ Next: [04 — Validation →](../04-validation/README.md)
+⏭️ Next: [Experiment 1 — ULCL Steering Verification →](../../../experiments/01-steering-verification/README.md)
